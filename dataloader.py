@@ -1,14 +1,18 @@
 import os
 import random
 import pyarrow
+import numpy as np
 import pandas as pd
 import pyarrow.parquet
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
 import cartopy.feature as cfeature
-# from sklearn.cluster import KMeans
+from pyproj import Transformer
 
 THIS_PATH = os.path.dirname(os.path.realpath(__file__))
+
+# Transformer for lat/lon -> meters (Web Mercator)
+_transformer = Transformer.from_crs("epsg:4326", "epsg:3857", always_xy=True)
 
 
 def csv_to_parquet(file_path, out_path):
@@ -101,11 +105,11 @@ def csv_to_parquet(file_path, out_path):
 
 def load_parquet(parquet_dir, k=5, seed=42):
     # List all MMSI directories
-    mmsi_dirs = [
+    mmsi_dirs = sorted(
         d
         for d in os.listdir(parquet_dir)
         if os.path.isdir(os.path.join(parquet_dir, d))
-    ]
+    )
     if len(mmsi_dirs) == 0:
         raise ValueError("No MMSI partitions found.")
 
@@ -122,7 +126,51 @@ def load_parquet(parquet_dir, k=5, seed=42):
         dfs.append(df)
 
     # Combine
-    return pd.concat(dfs, ignore_index=True)
+    df = pd.concat(dfs, ignore_index=True)
+
+    # Project lat/lon to meters for fast distance computations
+    df["x"], df["y"] = _transformer.transform(
+        df["Longitude"].values, df["Latitude"].values
+    )
+
+    df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+    df = df.sort_values(["MMSI", "Timestamp"]).reset_index(drop=True)
+
+    return df
+
+
+def preprocess_data(df, max_speed_kmh=100, max_time=4, max_dist=50):
+    df = df.copy()
+    df = df.sort_values(["MMSI", "Timestamp"]).reset_index(drop=True)
+
+    df["x_prev"] = df.groupby("MMSI")["x"].shift()
+    df["y_prev"] = df.groupby("MMSI")["y"].shift()
+    df["t_prev"] = df.groupby("MMSI")["Timestamp"].shift()
+
+    # Vectorized distance in km
+    dx = df["x"] - df["x_prev"]
+    dy = df["y"] - df["y_prev"]
+    df["dist_km"] = np.sqrt(dx**2 + dy**2) / 1000  # meters -> km
+
+    # Time difference in hours
+    df["dt_h"] = (df["Timestamp"] - df["t_prev"]).dt.total_seconds() / 3600
+
+    # Speed in km/h
+    df["speed_kmh"] = df["dist_km"] / df["dt_h"].replace(0, np.nan)
+
+    # Keep points under speed limit or first point of trajectory, as long as timestep has no 4h delta or dist has no 50km delta
+    df = df[
+        ((df["speed_kmh"] <= max_speed_kmh) | (df["speed_kmh"].isna()))
+        & (df["dt_h"] <= max_time)
+        & (df["dist_km"] <= max_dist)
+    ].reset_index(drop=True)
+
+    # Drop temporary columns
+    df.drop(
+        columns=["x_prev", "y_prev", "t_prev", "dist_km", "dt_h", "speed_kmh"],
+        inplace=True,
+    )
+    return df
 
 
 def plot_paths_on_map(df):
@@ -139,16 +187,32 @@ def plot_paths_on_map(df):
     ax.add_feature(cfeature.BORDERS, linestyle=":")
     ax.add_feature(cfeature.LAKES, alpha=0.5)
     ax.add_feature(cfeature.RIVERS)
-    for mmsi, group in df.groupby("MMSI"):
-        group_sorted = group.sort_values("Timestamp")
-        ax.plot(group_sorted["Longitude"], group_sorted["Latitude"], label=str(mmsi))
-        # ax.scatter(group_sorted["Longitude"], group_sorted["Latitude"], s=3)
-
+    if df is not None:
+        for mmsi, group in df.groupby("MMSI"):
+            group_sorted = group.sort_values("Timestamp")
+            ax.plot(
+                group_sorted["Longitude"], group_sorted["Latitude"], label=str(mmsi)
+            )
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
     ax.set_title("Connected Scatter of Vessels by MMSI")
     # ax.legend()
     plt.show()
+
+
+def get_ID_by_coords(df, lat, long):
+    x_query, y_query = _transformer.transform(long, lat)
+    # Vectorized Euclidean distance
+    dx = df["x"].values - x_query
+    dy = df["y"].values - y_query
+    distances = np.sqrt(dx**2 + dy**2)
+
+    # Find index of minimum distance
+    idx_min = np.argmin(distances)
+
+    closest_mmsi = df.iloc[idx_min]["MMSI"]
+
+    return closest_mmsi
 
 
 if __name__ == "__main__":
@@ -158,4 +222,8 @@ if __name__ == "__main__":
     # )
 
     df = load_parquet(os.path.join(THIS_PATH, "aisdk-2025-10-20"), k=100)
+    print(df.head())
+    df = preprocess_data(df)
     plot_paths_on_map(df)
+    weird = get_ID_by_coords(df, 54.16, 9.50)
+    plot_paths_on_map(df[df["MMSI"] == weird])
