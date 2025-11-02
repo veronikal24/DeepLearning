@@ -1,80 +1,161 @@
 import os
+import random
+import pyarrow
 import pandas as pd
-import matplotlib.pyplot as plt
+import pyarrow.parquet
 import cartopy.crs as ccrs
+import matplotlib.pyplot as plt
 import cartopy.feature as cfeature
+# from sklearn.cluster import KMeans
 
 THIS_PATH = os.path.dirname(os.path.realpath(__file__))
 
 
-def load_csv(file_path, nrows=None):
-    df = pd.read_csv(
-        file_path,
-        nrows=nrows,
-        usecols=[
-            "# Timestamp",
-            "Type of mobile",
+def csv_to_parquet(file_path, out_path):
+    dtypes = {
+        "MMSI": "object",
+        "SOG": float,
+        "COG": float,
+        "Longitude": float,
+        "Latitude": float,
+        "# Timestamp": "object",
+        "Type of mobile": "object",
+    }
+    usecols = list(dtypes.keys())
+    df = pd.read_csv(file_path, usecols=usecols, dtype=dtypes)
+
+    # Remove errors
+    bbox = [60, 0, 50, 20]
+    north, west, south, east = bbox
+    df = df[
+        (df["Latitude"] <= north)
+        & (df["Latitude"] >= south)
+        & (df["Longitude"] >= west)
+        & (df["Longitude"] <= east)
+    ]
+
+    df = df[df["Type of mobile"].isin(["Class A", "Class B"])].drop(
+        columns=["Type of mobile"]
+    )
+    df = df[df["MMSI"].str.len() == 9]  # Adhere to MMSI format
+    df = df[df["MMSI"].str[:3].astype(int).between(200, 775)]  # Adhere to MID standard
+
+    df = df.rename(columns={"# Timestamp": "Timestamp"})
+    df["Timestamp"] = pd.to_datetime(
+        df["Timestamp"], format="%d/%m/%Y %H:%M:%S", errors="coerce"
+    )
+
+    df = df.drop_duplicates(
+        [
+            "Timestamp",
             "MMSI",
-            "Latitude",
-            "Longitude",
-            "Navigational status",
         ],
-        sep=",",
-        engine="python",
+        keep="first",
     )
-    df.columns = [col.strip().lstrip("# ").strip() for col in df.columns]
-    df["Latitude"] = pd.to_numeric(df["Latitude"], errors="coerce")
-    df["Longitude"] = pd.to_numeric(df["Longitude"], errors="coerce")
-    df = df.dropna(subset=["Latitude", "Longitude"])
-    return df
 
+    def track_filter(g):
+        len_filt = len(g) > 256  # Min required length of track/segment
+        sog_filt = 1 <= g["SOG"].max() <= 50  # Remove stationary tracks/segments
+        time_filt = (
+            g["Timestamp"].max() - g["Timestamp"].min()
+        ).total_seconds() >= 60 * 60  # Min required timespan
+        return len_filt and sog_filt and time_filt
 
-def filter_some(df):
-    df = df[df["Type of mobile"] == "Class A"]
-    df = df[df["Navigational status"] == "Under way using engine"]
-    return df
+    # Track filtering
+    df = df.groupby("MMSI").filter(track_filter)
+    df = df.sort_values(["MMSI", "Timestamp"])
 
+    # Divide track into segments based on timegap
+    df["Segment"] = df.groupby("MMSI")["Timestamp"].transform(
+        lambda x: (x.diff().dt.total_seconds().fillna(0) >= 15 * 60).cumsum()
+    )  # Max allowed timegap
 
-def plot_some(df, MMSI=None):
-    if not MMSI:
-        ax = plt.axes(projection=ccrs.PlateCarree())
+    # Segment filtering
+    df = df.groupby(["MMSI", "Segment"]).filter(track_filter)
+    df = df.reset_index(drop=True)
 
-        min_lon, max_lon = 5.0, 15
-        min_lat, max_lat = 50, 60
-        ax.set_extent([min_lon, max_lon, min_lat, max_lat])
+    #
+    knots_to_ms = 0.514444
+    df["SOG"] = knots_to_ms * df["SOG"]
 
-        # Add map features
-        ax.add_feature(cfeature.LAND)
-        ax.add_feature(cfeature.OCEAN)
-        ax.add_feature(cfeature.COASTLINE)
-        ax.add_feature(cfeature.BORDERS, linestyle=":")
-        ax.add_feature(cfeature.LAKES, alpha=0.5)
-        ax.add_feature(cfeature.RIVERS)
-        for mmsi, group in df.groupby("MMSI"):
-            group_sorted = group.sort_values("Timestamp")
-            ax.plot(
-                group_sorted["Longitude"], group_sorted["Latitude"], label=str(mmsi)
-            )
-            # ax.scatter(group_sorted["Longitude"], group_sorted["Latitude"], s=3)
+    # Clustering
+    # kmeans = KMeans(n_clusters=48, random_state=0)
+    # kmeans.fit(df[["Latitude", "Longitude"]])
+    # df["Geocell"] = kmeans.labels_
+    # centers = kmeans.cluster_centers_
+    # "Latitude": center[0],
+    # "Longitude": center[1],
 
-        ax.set_xlabel("Longitude")
-        ax.set_ylabel("Latitude")
-        ax.set_title("Connected Scatter of Vessels by MMSI")
-        # ax.legend()
-        plt.show()
-
-
-def get_list_of_unique_ids(file_path):
-    df = pd.read_csv(
-        file_path, nrows=10_000_000, usecols=["MMSI"], sep=",", engine="python"
+    # df["Date"] = df["Timestamp"].dt.strftime("%Y-%m-%d")
+    # Save as parquet file with partitions
+    table = pyarrow.Table.from_pd(df, preserve_index=False)
+    pyarrow.parquet.write_to_dataset(
+        table,
+        root_path=out_path,
+        partition_cols=[
+            "MMSI",  # "Date",
+            "Segment",  # "Geocell"
+        ],
     )
-    return set(df["MMSI"])
+
+
+def load_parquet(parquet_dir, k=5, seed=42):
+    # List all MMSI directories
+    mmsi_dirs = [
+        d
+        for d in os.listdir(parquet_dir)
+        if os.path.isdir(os.path.join(parquet_dir, d))
+    ]
+    if len(mmsi_dirs) == 0:
+        raise ValueError("No MMSI partitions found.")
+
+    # Sample k MMSIs
+    random.seed(seed)
+    sample_mmsis = random.sample(mmsi_dirs, min(k, len(mmsi_dirs)))
+
+    # Load all Parquet files for selected MMSIs
+    dfs = []
+    for mmsi in sample_mmsis:
+        mmsi_path = os.path.join(parquet_dir, mmsi)
+        df = pyarrow.parquet.ParquetDataset(mmsi_path).read_pandas().to_pandas()
+        df["MMSI"] = mmsi
+        dfs.append(df)
+
+    # Combine
+    return pd.concat(dfs, ignore_index=True)
+
+
+def plot_paths_on_map(df):
+    ax = plt.axes(projection=ccrs.PlateCarree())
+
+    min_lon, max_lon = 5, 15
+    min_lat, max_lat = 53, 60
+    ax.set_extent([min_lon, max_lon, min_lat, max_lat])
+
+    # Add map features
+    ax.add_feature(cfeature.LAND)
+    ax.add_feature(cfeature.OCEAN)
+    ax.add_feature(cfeature.COASTLINE)
+    ax.add_feature(cfeature.BORDERS, linestyle=":")
+    ax.add_feature(cfeature.LAKES, alpha=0.5)
+    ax.add_feature(cfeature.RIVERS)
+    for mmsi, group in df.groupby("MMSI"):
+        group_sorted = group.sort_values("Timestamp")
+        ax.plot(group_sorted["Longitude"], group_sorted["Latitude"], label=str(mmsi))
+        # ax.scatter(group_sorted["Longitude"], group_sorted["Latitude"], s=3)
+
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+    ax.set_title("Connected Scatter of Vessels by MMSI")
+    # ax.legend()
+    plt.show()
 
 
 if __name__ == "__main__":
-    df = load_csv(os.path.join(THIS_PATH, "aisdk-2025-10-20.csv"))
+    # csv_to_parquet(
+    #    os.path.join(THIS_PATH, "aisdk-2025-10-20.csv"),
+    #    os.path.join(THIS_PATH, "aisdk-2025-10-20"),
+    # )
 
-    df = filter_some(df)
-
-    print(len(df))
-    # plot_some(df)
+    df = load_parquet(os.path.join(THIS_PATH, "aisdk-2025-10-20"), k=100)
+    plot_paths_on_map(df)
