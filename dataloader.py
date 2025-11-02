@@ -10,6 +10,7 @@ import cartopy.feature as cfeature
 from pyproj import Transformer
 
 THIS_PATH = os.path.dirname(os.path.realpath(__file__))
+MY_FILE = THIS_PATH+"\\aisdk-2025-02-27"
 
 # Transformer for lat/lon -> meters (Web Mercator)
 _transformer = Transformer.from_crs("epsg:4326", "epsg:3857", always_xy=True)
@@ -92,7 +93,8 @@ def csv_to_parquet(file_path, out_path):
 
     # df["Date"] = df["Timestamp"].dt.strftime("%Y-%m-%d")
     # Save as parquet file with partitions
-    table = pyarrow.Table.from_pd(df, preserve_index=False)
+    # pyarrow.Table.from_pandas is the correct constructor (from_pd does not exist)
+    table = pyarrow.Table.from_pandas(df, preserve_index=False)
     pyarrow.parquet.write_to_dataset(
         table,
         root_path=out_path,
@@ -216,12 +218,10 @@ def get_ID_by_coords(df, lat, long):
 
 
 if __name__ == "__main__":
-    # csv_to_parquet(
-    #    os.path.join(THIS_PATH, "aisdk-2025-10-20.csv"),
-    #    os.path.join(THIS_PATH, "aisdk-2025-10-20"),
-    # )
-
-    df = load_parquet(os.path.join(THIS_PATH, "aisdk-2025-10-20"), k=100)
+    csv_to_parquet(
+        os.path.join(THIS_PATH, MY_FILE + ".csv"),
+        os.path.join(THIS_PATH, MY_FILE),)
+    df = load_parquet(os.path.join(THIS_PATH, MY_FILE), k=100)
     print(df.head())
     df = preprocess_data(df)
     plot_paths_on_map(df)
