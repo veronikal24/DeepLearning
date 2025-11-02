@@ -50,7 +50,7 @@ def fn(file_path, out_path):
     df = df.groupby(["MMSI", "Segment"]).filter(track_filter)
     df = df.reset_index(drop=True)
 
-    #
+    # VERONIKA: WTF is this ? 
     knots_to_ms = 0.514444
     df["SOG"] = knots_to_ms * df["SOG"]
 
