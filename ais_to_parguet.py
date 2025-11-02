@@ -74,5 +74,3 @@ def fn(file_path, out_path):
     )
 
 
-if __name__ == "__main__":
-    fn()
