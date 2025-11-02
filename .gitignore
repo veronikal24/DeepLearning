@@ -6,3 +6,6 @@ __pycache__/
 # Data files
 *.parquet
 *.csv
+
+# Stupid macOS stuff
+*.DS_Store
