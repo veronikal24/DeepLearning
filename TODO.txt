@@ -2,3 +2,6 @@
 1. Create own notebook
 2. Drop the NaaN values
 3. Describe the current steps and future work
+
+https://chatgpt.com/s/dr_6908d074a8208191a556698dcae62f06
+
