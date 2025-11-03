@@ -1,0 +1,4 @@
+## Preprocessing
+1. Create own notebook
+2. Drop the NaaN values
+3. Describe the current steps and future work
