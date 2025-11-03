@@ -1,4 +1,5 @@
 import os
+import sys
 import random
 import pyarrow
 import numpy as np
@@ -230,13 +231,13 @@ def get_ID_by_coords(df, lat, long):
 
 
 if __name__ == "__main__":
-    # csv_to_parquet(
-    #    os.path.join(THIS_PATH, MY_FILE + ".csv"),
-    #    os.path.join(THIS_PATH, MY_FILE),
-    # )
-    df = load_parquet(os.path.join(THIS_PATH, MY_FILE), k=10000)
-    print(df.head())
-    df = preprocess_data(df)
-    plot_paths_on_map(df, heat=[(9, 0.01), (6, 0.02), (3, 0.1)])
+    csv_to_parquet(
+        os.path.join(sys.argv[1]),
+        os.path.join("dataset"),
+    )
+    # df = load_parquet(os.path.join(THIS_PATH, MY_FILE), k=10000)
+    # print(df.head())
+    # df = preprocess_data(df)
+    # plot_paths_on_map(df, heat=[(9, 0.01), (6, 0.02), (3, 0.1)])
     # weird = get_ID_by_coords(df, 54.16, 9.50)
     # plot_paths_on_map(df[df["MMSI"] == weird])
