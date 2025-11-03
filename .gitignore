@@ -1,4 +1,6 @@
 .venv/
+.venv*/
+venv/
 __pycache__/
 *.pyc
 .env
@@ -9,3 +11,6 @@ __pycache__/
 
 # Stupid macOS stuff
 *.DS_Store
+
+# Dataset
+dataset/
