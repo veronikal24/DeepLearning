@@ -125,9 +125,12 @@ def load_parquet(parquet_dir, k=5, seed=42):
     dfs = []
     for mmsi in sample_mmsis:
         mmsi_path = os.path.join(parquet_dir, mmsi)
-        df = pyarrow.parquet.ParquetDataset(mmsi_path).read_pandas().to_pandas()
-        df["MMSI"] = mmsi
-        dfs.append(df)
+        try:
+            df = pyarrow.parquet.ParquetDataset(mmsi_path).read_pandas().to_pandas()
+            df["MMSI"] = mmsi
+            dfs.append(df)
+        except:
+            print("Parquet file corrupted or smth: " + mmsi)
 
     # Combine
     df = pd.concat(dfs, ignore_index=True)
