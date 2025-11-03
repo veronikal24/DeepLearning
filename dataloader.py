@@ -1,21 +1,19 @@
 import os
 import sys
+import torch
 import random
 import pyarrow
-import torch
+import pyarrow.parquet
+
 import numpy as np
 import pandas as pd
-import pyarrow.parquet
 import cartopy.crs as ccrs
-from torch.utils.data import Dataset
-from collections import defaultdict
 import matplotlib.pyplot as plt
 import cartopy.feature as cfeature
-from pyproj import Transformer
 
-THIS_PATH = os.path.dirname(os.path.realpath(__file__))
-# MY_FILE = THIS_PATH + "\\aisdk-2025-02-27"
-MY_FILE = "aisdk-2025-10-20"
+from pyproj import Transformer
+from collections import defaultdict
+from torch.utils.data import Dataset
 
 # Transformer for lat/lon -> meters (Web Mercator)
 _transformer = Transformer.from_crs("epsg:4326", "epsg:3857", always_xy=True)
@@ -151,7 +149,7 @@ def load_parquet(parquet_dir, k=5, seed=42):
             df = pyarrow.parquet.ParquetDataset(mmsi_path).read_pandas().to_pandas()
             df["MMSI"] = mmsi
             dfs.append(df)
-        except:
+        except Exception:
             print("Parquet file corrupted or smth: " + mmsi)
 
     # Combine
@@ -302,32 +300,6 @@ def get_ID_by_coords(df, lat, long):
     closest_mmsi = df.iloc[idx_min]["MMSI"]
 
     return closest_mmsi
-
-
-# class SlidingWindowDataset(Dataset):
-#     def __init__(self, df, max_diff_per_sequence_minutes=6):
-#         self.df = df.copy()
-#         self.windows = []
-#         full_blocks = defaultdict(list)
-#         for mmsi, group in df.groupby("MMSI"):
-#             group = group.sort_values("Timestamp")
-#             # Compute time difference between consecutive rows
-#             group["time_diff"] = group["Timestamp"].diff()
-#
-#             # Start a new block if time difference is greater than max_diff or first row
-#             group["block"] = (
-#                 group["time_diff"] > pd.Timedelta(minutes=max_diff_per_sequence_minutes)
-#             ).cumsum()
-#
-#             # Iterate over blocks and save
-#             for _, block_df in group.groupby("block"):
-#                 full_blocks[mmsi].append(
-#                     (block_df["Timestamp"].min(), block_df["Timestamp"].max())
-#                 )
-#         for k, v in full_blocks.items():
-#             # Slice the block based on the given window_size_minutes and pred_size_minutes value, with a stride of stride.
-#             # This should end up just being a list of tensors
-#             ...
 
 
 class SlidingWindowDataset(Dataset):
