@@ -10,7 +10,8 @@ import cartopy.feature as cfeature
 from pyproj import Transformer
 
 THIS_PATH = os.path.dirname(os.path.realpath(__file__))
-MY_FILE = THIS_PATH+"\\aisdk-2025-02-27"
+# MY_FILE = THIS_PATH + "\\aisdk-2025-02-27"
+MY_FILE = "aisdk-2025-10-20"
 
 # Transformer for lat/lon -> meters (Web Mercator)
 _transformer = Transformer.from_crs("epsg:4326", "epsg:3857", always_xy=True)
@@ -175,7 +176,7 @@ def preprocess_data(df, max_speed_kmh=100, max_time=4, max_dist=50):
     return df
 
 
-def plot_paths_on_map(df):
+def plot_paths_on_map(df, heat=0):
     ax = plt.axes(projection=ccrs.PlateCarree())
 
     min_lon, max_lon = 5, 15
@@ -192,9 +193,20 @@ def plot_paths_on_map(df):
     if df is not None:
         for mmsi, group in df.groupby("MMSI"):
             group_sorted = group.sort_values("Timestamp")
-            ax.plot(
-                group_sorted["Longitude"], group_sorted["Latitude"], label=str(mmsi)
-            )
+            if heat:
+                for width, alpha in heat:
+                    ax.plot(
+                        group_sorted["Longitude"],
+                        group_sorted["Latitude"],
+                        label=str(mmsi),
+                        linewidth=width,
+                        color="r",
+                        alpha=alpha,
+                    )
+            else:
+                ax.plot(
+                    group_sorted["Longitude"], group_sorted["Latitude"], label=str(mmsi)
+                )
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
     ax.set_title("Connected Scatter of Vessels by MMSI")
@@ -218,12 +230,13 @@ def get_ID_by_coords(df, lat, long):
 
 
 if __name__ == "__main__":
-    csv_to_parquet(
-        os.path.join(THIS_PATH, MY_FILE + ".csv"),
-        os.path.join(THIS_PATH, MY_FILE),)
-    df = load_parquet(os.path.join(THIS_PATH, MY_FILE), k=100)
+    # csv_to_parquet(
+    #    os.path.join(THIS_PATH, MY_FILE + ".csv"),
+    #    os.path.join(THIS_PATH, MY_FILE),
+    # )
+    df = load_parquet(os.path.join(THIS_PATH, MY_FILE), k=10000)
     print(df.head())
     df = preprocess_data(df)
-    plot_paths_on_map(df)
-    weird = get_ID_by_coords(df, 54.16, 9.50)
-    plot_paths_on_map(df[df["MMSI"] == weird])
+    plot_paths_on_map(df, heat=[(9, 0.01), (6, 0.02), (3, 0.1)])
+    # weird = get_ID_by_coords(df, 54.16, 9.50)
+    # plot_paths_on_map(df[df["MMSI"] == weird])
