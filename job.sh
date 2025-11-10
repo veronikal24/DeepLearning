@@ -5,8 +5,8 @@
 #BSUB -e error_%J.err                 # Error log file
 #BSUB -q gpuv100                          # Queue name (gpu queue)
 #BSUB -gpu "num=1:mode=exclusive_process"   # Request 1 GPU
-#BSUB -R "rusage[mem=10G]"             # Request 10 GB of RAM
-#BSUB -W 01:00                        # Time limit (1 hour)
+#BSUB -R "rusage[mem=5G]"             # Request 5 GB of RAM
+#BSUB -W 02:00                        # Time limit (2 hours)
 #BSUB -R "span[hosts=1]"             # Number of CPUs
 #BSUB -n 4                            # Number of CPU cores
 
