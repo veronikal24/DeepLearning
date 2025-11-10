@@ -352,7 +352,7 @@ def quick_train_step(device='cpu'):
     return losses, y_hat.detach().cpu(), y_true.detach().cpu()
 
 
-if __name__ == "__main__":
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    losses, y_hat, y_true = quick_train_step(device=device)
-    print("Final loss:", losses[-1])
+# if __name__ == "__main__":
+#     device = "cuda" if torch.cuda.is_available() else "cpu"
+#     losses, y_hat, y_true = quick_train_step(device=device)
+#     print("Final loss:", losses[-1])
