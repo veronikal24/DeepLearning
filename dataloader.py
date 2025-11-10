@@ -351,36 +351,35 @@ class SlidingWindowDataset(Dataset):
     def __getitem__(self, idx):
         return self.windows[idx]
 
+    # if __name__ == "__main__":
+    #     ####################################################################################
+    #     ### Uncomment this block if you want to parse a csv file into the parquet
+    #     ### data format (call the python code as "python dataloader.py csv_filename.csv")
+    #     ####################################################################################
+    #     # csv_to_parquet(
+    #     #    sys.argv[1],
+    #     #    "dataset",
+    #     # )
+    #     ####################################################################################
 
-if __name__ == "__main__":
-    ####################################################################################
-    ### Uncomment this block if you want to parse a csv file into the parquet
-    ### data format (call the python code as "python dataloader.py csv_filename.csv")
-    ####################################################################################
-    # csv_to_parquet(
-    #    sys.argv[1],
-    #    "dataset",
-    # )
-    ####################################################################################
+    #     ####################################################################################
+    #     ### Uncomment this block if you want to load a sample of the data in the 'dataset'
+    #     ### directory, apply the preprocessing filtering and plot the heatmap
+    #     ####################################################################################
+    #     # df = load_parquet("dataset", k=100)
+    #     # df = preprocess_data(df)
+    #     # plot_paths_on_map(df, heat=[(9, 0.01), (6, 0.02), (3, 0.1)])
+    #     ####################################################################################
 
-    ####################################################################################
-    ### Uncomment this block if you want to load a sample of the data in the 'dataset'
-    ### directory, apply the preprocessing filtering and plot the heatmap
-    ####################################################################################
-    # df = load_parquet("dataset", k=100)
-    # df = preprocess_data(df)
-    # plot_paths_on_map(df, heat=[(9, 0.01), (6, 0.02), (3, 0.1)])
-    ####################################################################################
-
-    ####################################################################################
-    ### Uncomment this block if you want to retrieve and plot a single vessel
-    ### trajectory, f.ex. which is closest to the coordinates (54.16, 9.50)
-    ####################################################################################
-    # df = load_parquet("dataset", k=100)
-    # df = preprocess_data(df)
-    # weird = get_ID_by_coords(df, 54.16, 9.50)
-    # plot_paths_on_map(df[df["MMSI"] == weird])
-    ####################################################################################
+    #     ####################################################################################
+    #     ### Uncomment this block if you want to retrieve and plot a single vessel
+    #     ### trajectory, f.ex. which is closest to the coordinates (54.16, 9.50)
+    #     ####################################################################################
+    #     # df = load_parquet("dataset", k=100)
+    #     # df = preprocess_data(df)
+    #     # weird = get_ID_by_coords(df, 54.16, 9.50)
+    #     # plot_paths_on_map(df[df["MMSI"] == weird])
+    #     ####################################################################################
 
     ####################################################################################
     ### Uncomment this block if you want to load the data sample into a pytorch Dataset
