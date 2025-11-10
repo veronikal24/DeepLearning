@@ -1,5 +1,4 @@
 import os
-import sys
 import torch
 import random
 import pyarrow
@@ -7,13 +6,12 @@ import pyarrow.parquet
 
 import numpy as np
 import pandas as pd
-import cartopy.crs as ccrs
-import matplotlib.pyplot as plt
-import cartopy.feature as cfeature
 
 from pyproj import Transformer
 from collections import defaultdict
 from torch.utils.data import Dataset
+
+# from plotting import plot_paths_on_map
 
 # Transformer for lat/lon -> meters (Web Mercator)
 _transformer = Transformer.from_crs("epsg:4326", "epsg:3857", always_xy=True)
@@ -232,51 +230,6 @@ def preprocess_data(df, max_speed_kmh=100, max_time=4, max_dist=50):
         inplace=True,
     )
     return df
-
-
-def plot_paths_on_map(df, heat=None):
-    """Plots the vessel paths from the given dataset onto a map.
-    The optional heat value can be used to plot all paths in the same color to see where traffic is most active.
-
-    Args:
-        df (dataframe): AIS data
-        heat (list[tuple[int]], optional): A list containing tuples of the to-be-plotted (linewidth, alpha) for each trajectory (Gives a "fade" effect when used with something like "[(9, 0.005), (6, 0.01), (3, 0.05)]"). Defaults to None.
-    """
-    ax = plt.axes(projection=ccrs.PlateCarree())
-
-    min_lon, max_lon = 5, 15
-    min_lat, max_lat = 53, 60
-    ax.set_extent([min_lon, max_lon, min_lat, max_lat])
-
-    # Add map features
-    ax.add_feature(cfeature.LAND)
-    ax.add_feature(cfeature.OCEAN)
-    ax.add_feature(cfeature.COASTLINE)
-    ax.add_feature(cfeature.BORDERS, linestyle=":")
-    ax.add_feature(cfeature.LAKES, alpha=0.5)
-    ax.add_feature(cfeature.RIVERS)
-    if df is not None:
-        for mmsi, group in df.groupby("MMSI"):
-            group_sorted = group.sort_values("Timestamp")
-            if heat:
-                for width, alpha in heat:
-                    ax.plot(
-                        group_sorted["Longitude"],
-                        group_sorted["Latitude"],
-                        label=str(mmsi),
-                        linewidth=width,
-                        color="r",
-                        alpha=alpha,
-                    )
-            else:
-                ax.plot(
-                    group_sorted["Longitude"], group_sorted["Latitude"], label=str(mmsi)
-                )
-    ax.set_xlabel("Longitude")
-    ax.set_ylabel("Latitude")
-    ax.set_title("Connected Scatter of Vessels by MMSI")
-    # ax.legend()
-    plt.show()
 
 
 def get_ID_by_coords(df, lat, long):
