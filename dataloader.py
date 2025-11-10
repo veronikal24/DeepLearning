@@ -150,7 +150,7 @@ def load_parquet(parquet_dir, k=5, seed=42):
             df["MMSI"] = mmsi
             dfs.append(df)
         except Exception:
-            print("Parquet file corrupted or smth: " + mmsi)
+            print("Parquet file corrupted or smth: " + mmsi, flush=True)
 
     # Combine
     df = pd.concat(dfs, ignore_index=True)
@@ -396,6 +396,6 @@ if __name__ == "__main__":
         stride=12,
     )
     x, y = dataset[0]
-    print(x)
-    print(y)
+    print(x, flush=True)
+    print(y, flush=True)
     ####################################################################################
