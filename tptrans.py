@@ -179,4 +179,6 @@ def train_model_from_dataset(k=100, epochs=100, save_model=""):
 
 
 if __name__ == "__main__":
-    model = train_model_from_dataset(k=500, epochs=1000, save_model="tptrans_k100_e100")
+    model = train_model_from_dataset(
+        k=500, epochs=1000, save_model="tptrans_k500_e1000"
+    )
