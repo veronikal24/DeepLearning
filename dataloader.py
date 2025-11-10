@@ -18,6 +18,8 @@ from torch.utils.data import Dataset
 # Transformer for lat/lon -> meters (Web Mercator)
 _transformer = Transformer.from_crs("epsg:4326", "epsg:3857", always_xy=True)
 
+SAMPLE_INTERVAL_MIN = 6
+
 
 def csv_to_parquet(file_path, out_path):
     """Reads the csv files from the danish thingy and creates parquet files in the given directory (this is the script Heisenberg provided)
@@ -167,7 +169,7 @@ def load_parquet(parquet_dir, k=5, seed=42):
     df = (
         df.set_index("Timestamp")
         .groupby("MMSI")
-        .resample("6T")
+        .resample(str(SAMPLE_INTERVAL_MIN) + "T")
         .mean(numeric_only=True)
         .dropna(subset=["Latitude", "Longitude"])
         .reset_index()
@@ -378,10 +380,15 @@ class SlidingWindowDataset(Dataset):
                     if len(input_df) == 0 or len(pred_df) == 0:
                         start_time += self.stride
                         continue
-
-                    x = torch.tensor(input_df.values, dtype=torch.float32)
-                    y = torch.tensor(pred_df.values, dtype=torch.float32)
-                    self.windows.append((x, y))
+                    if (
+                        len(input_df)
+                        == (window_size_minutes - pred_size_minutes)
+                        / SAMPLE_INTERVAL_MIN
+                        and len(pred_df) == pred_size_minutes / SAMPLE_INTERVAL_MIN
+                    ):
+                        x = torch.tensor(input_df.values, dtype=torch.float32)
+                        y = torch.tensor(pred_df.values, dtype=torch.float32)
+                        self.windows.append((x, y))
 
                     start_time += self.stride
 
