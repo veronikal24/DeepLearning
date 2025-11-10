@@ -142,7 +142,7 @@ def _evaluate(model, test_loader, device):
 
 
 def train_model_from_dataset(k=100, epochs=100, save_model=""):
-    df = load_parquet("dataset", k=k)
+    df = load_parquet("aisdk-2025-02-27", k=k)
     df = preprocess_data(df)
 
     dataset = SlidingWindowDataset(
