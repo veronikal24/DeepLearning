@@ -13,6 +13,9 @@
 # When we want to execute the script on GPU, we need to run this job in the terminal with:
 # ./job.sh
 # It uses some scheduling system which uses these bsub arguments above to assign ressources somehow :)
+# Maybe the terminal will tell you "Permission denied" when running ./job.sh, in that case you need to run:
+# chmod +x job.sh
+# before and try to run the job again.
 
 # Load the cuda module to make it accessible to pytorch
 module load cuda
