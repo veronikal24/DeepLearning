@@ -304,6 +304,77 @@ def get_ID_by_coords(df, lat, long):
     return closest_mmsi
 
 
+def plot_dataset_sample(dataset):
+    # Create 4 subplots
+    fig, axs = plt.subplots(
+        2, 2, figsize=(14, 10), subplot_kw={"projection": ccrs.PlateCarree()}
+    )
+    axs = axs.flatten()
+
+    min_lon, max_lon = 5, 15
+    min_lat, max_lat = 53, 60
+
+    sample = random.sample(range(len(dataset)), 4)
+
+    for i, ax in enumerate(axs):
+        ax.set_extent([min_lon, max_lon, min_lat, max_lat])
+        ax.add_feature(cfeature.LAND)
+        ax.add_feature(cfeature.OCEAN)
+        ax.add_feature(cfeature.COASTLINE)
+        ax.add_feature(cfeature.BORDERS, linestyle=":")
+        ax.add_feature(cfeature.LAKES, alpha=0.5)
+        ax.add_feature(cfeature.RIVERS)
+
+        for x, y in dataset[sample[i] : sample[i] + 1]:
+            xn = (x[:, 0].numpy(), x[:, 1].numpy())
+            yn = (y[:, 0].numpy(), y[:, 1].numpy())
+            ax.scatter(xn[1], xn[0], color="b", s=30)
+            ax.scatter(yn[1], yn[0], color="g", s=30)
+
+        ax.set_xlabel("Longitude")
+        ax.set_ylabel("Latitude")
+        ax.set_title(f"Connected Scatter of Vessels (Sample {i + 1})")
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_test_results(df):
+    ax = plt.axes(projection=ccrs.PlateCarree())
+
+    min_lon, max_lon = 5, 15
+    min_lat, max_lat = 53, 60
+    ax.set_extent([min_lon, max_lon, min_lat, max_lat])
+
+    # Add map features
+    ax.add_feature(cfeature.LAND)
+    ax.add_feature(cfeature.OCEAN)
+    ax.add_feature(cfeature.COASTLINE)
+    ax.add_feature(cfeature.BORDERS, linestyle=":")
+    ax.add_feature(cfeature.LAKES, alpha=0.5)
+    ax.add_feature(cfeature.RIVERS)
+    if df is not None:
+        for i, group in df.groupby("id"):
+            for t, grp in group.groupby("type"):
+                if t == "input":
+                    ax.scatter(
+                        grp["longitude"], grp["latitude"], label=str(i), color="b"
+                    )
+                elif t == "true":
+                    ax.scatter(
+                        grp["longitude"], grp["latitude"], label=str(i), color="g"
+                    )
+                elif t == "pred":
+                    ax.scatter(
+                        grp["longitude"], grp["latitude"], label=str(i), color="r"
+                    )
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+    ax.set_title("Connected Scatter of Vessels by MMSI")
+    # ax.legend()
+    plt.show()
+
+
 class SlidingWindowDataset(Dataset):
     """Inherits from pytorch dataset;
     Determines blocks of sequences based on the 'max_diff_per_sequence_minutes',
