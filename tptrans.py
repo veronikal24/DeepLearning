@@ -123,10 +123,6 @@ def _train(
             f"Epoch {epoch + 1}/{epochs} | Train Loss: {avg_loss:.6f} | Val Loss: {val_loss:.6f}",
             flush=True,
         )
-        with open(os.path.join("checkpoints", "current_job.log"), "a") as f:
-            f.write(
-                f"Epoch {epoch + 1}/{epochs} | Train Loss: {avg_loss:.6f} | Val Loss: {val_loss:.6f}\n"
-            )
 
     return model, train_loader, val_loader, test_loader
 
@@ -184,8 +180,6 @@ def train_model_from_dataset(k=100, epochs=100, save_model=""):
 
 
 if __name__ == "__main__":
-    with open(os.path.join("checkpoints", "current_job.log"), "w") as f:
-        f.write("\nStarting training...\n\n")
     model = train_model_from_dataset(
         k=500, epochs=1000, save_model="tptrans_k500_e1000"
     )
