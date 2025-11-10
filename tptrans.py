@@ -120,8 +120,13 @@ def _train(
         val_loss /= val_size
 
         print(
-            f"Epoch {epoch + 1}/{epochs} | Train Loss: {avg_loss:.6f} | Val Loss: {val_loss:.6f}"
+            f"Epoch {epoch + 1}/{epochs} | Train Loss: {avg_loss:.6f} | Val Loss: {val_loss:.6f}",
+            flush=True,
         )
+        with open(os.path.join("checkpoints", "current_job.log"), "a") as f:
+            f.write(
+                f"Epoch {epoch + 1}/{epochs} | Train Loss: {avg_loss:.6f} | Val Loss: {val_loss:.6f}\n"
+            )
 
     return model, train_loader, val_loader, test_loader
 
@@ -137,7 +142,7 @@ def _evaluate(model, test_loader, device):
             loss = criterion(pred, y)
             test_loss += loss.item() * x.size(0)
     test_loss /= len(test_loader.dataset)
-    print(f"Test Loss: {test_loss:.6f}")
+    print(f"Test Loss: {test_loss:.6f}", flush=True)
     return test_loss
 
 
@@ -152,10 +157,10 @@ def train_model_from_dataset(k=100, epochs=100, save_model=""):
         pred_size_minutes=60,
         stride=60,
     )
-    print(f"Total dataset size: {len(dataset)}")
+    print(f"Total dataset size: {len(dataset)}", flush=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using {device}...")
+    print(f"Using {device}...", flush=True)
     model = TPTrans(pred_len=dataset[0][1].shape[0]).to(device)
 
     trained_model, train_loader, val_loader, test_loader = _train(
@@ -179,6 +184,8 @@ def train_model_from_dataset(k=100, epochs=100, save_model=""):
 
 
 if __name__ == "__main__":
+    with open(os.path.join("checkpoints", "current_job.log"), "w") as f:
+        f.write("\nStarting training...\n\n")
     model = train_model_from_dataset(
         k=500, epochs=1000, save_model="tptrans_k500_e1000"
     )
