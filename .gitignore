@@ -6,7 +6,6 @@ __pycache__/
 .env
 *.log
 *.err
-*.sh
 
 # Data files
 *.parquet
