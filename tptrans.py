@@ -8,7 +8,7 @@ from dataloader import load_parquet, preprocess_data, SlidingWindowDataset
 class WeightedStepMSELoss(nn.Module):
     """
     MSE loss with increasing weights for later steps in a sequence.
-    
+
     mode: 'linear' or 'exponential' weighting. Default: Equal weighting (None).
     start_weight: Lowest assigned weight
     end_weight: Highest assigned weight
@@ -156,7 +156,7 @@ def _train(
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
             # simplest: use the last observed position as start token
-            tgt_start = x[:, -1:, :2]  # grab lat/lon
+            tgt_start = x[:, -1:, 2:4]  # grab lat/lon
             optimizer.zero_grad()
             pred = model(x, tgt_start)
             loss = criterion(pred, y)
