@@ -1,41 +1,24 @@
 # DeepLearning
 
-## Poetry setup
+Lightweight project for experimenting with AIS vessel trajectory modeling and small Informer/Transformer variants.
 
-This project uses Poetry for dependency management. To set up locally (PowerShell):
+**Repository Structure**
+- `dataloader.py` — utilities to load, preprocess and convert AIS CSV/parquet data.
+- `informer_min.py` — compact Informer implementation used for experiments.
+- `tpinform.py`, `tptrans.py` — experiment / training scripts (project-specific).
+- `checkpoints/` — saved model checkpoints.
+- `command_scripts/` — helper scripts for running jobs (e.g. `job.sh`).
+- `logs/` and `important_performance_log_files/` — training and evaluation logs.
+- `aisdk-.../` — raw AIS data folders used in preprocessing.
+- Notebooks: `DataExplorationVeronika.ipynb`, `InformerPerformance.ipynb` — exploration and evaluation notebooks.
 
-```powershell
-# Install Poetry (if not installed)
-curl -sSL https://install.python-poetry.org | python -
 
-# From the repo root
-cd c:\git\DeepLearning
+**Running on a cluster / batch system**
+- The repo contains `job.sh` as an example submission script for an LSF-like scheduler. Edit resource requests and paths then submit with your scheduler's submit command (e.g. `bsub < job.sh`).
 
-# Create virtual environment and install deps
-poetry install
+**TODO / Improvements**
+- Make model output filenames include parameter summaries (hyperparams, dataset name).
+- Train Informer and Transformer variants using consistent training configurations for fair comparison.
+- Add distance-based evaluation metrics (e.g., haversine distance between predicted and true positions).
+- Move non-essential outputs (temporary files, error dumps) to `.gitignore`.
 
-# Activate the virtual environment (Poetry-managed)
-poetry shell
-
-# Run the simple test (compiles the example script without executing heavy IO)
-python -m py_compile veronika_test.py
-```
-
-If you prefer to pass paths when running `veronika_test.py`, call the script module or edit the constants inside the file.
-
-### Running via Poetry
-
-After `poetry install` you can either run the script directly with Python inside the Poetry environment:
-
-```powershell
-poetry run python veronika_test.py C:\path\to\in.csv C:\path\to\out.parquet
-```
-
-Or use the convenience script installed by Poetry:
-
-```powershell
-poetry run veronika-test [in.csv] [out.parquet]
-```
-
-Both approaches run the code inside Poetry's virtual environment where `pandas` and other deps are installed.
-# DeepLearning
