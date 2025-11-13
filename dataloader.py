@@ -309,6 +309,9 @@ class SlidingWindowDataset(Dataset):
                 if block_df["time_min"].iloc[-1] < window_size_minutes:
                     continue
 
+                block_df["delta_lat"] = block_df["Latitude"].diff().fillna(0)
+                block_df["delta_lon"] = block_df["Longitude"].diff().fillna(0)
+
                 start_time = 0.0
                 while True:
                     end_time = start_time + window_size_minutes
@@ -332,9 +335,9 @@ class SlidingWindowDataset(Dataset):
                     )
 
                     input_df = block_df.loc[
-                        input_mask, ["Latitude", "Longitude", "SOG", "COG"]
+                        input_mask, ["delta_lat", "delta_lon", "Latitude", "Longitude", "SOG", "COG"]
                     ]
-                    pred_df = block_df.loc[pred_mask, ["Latitude", "Longitude"]]
+                    pred_df = block_df.loc[pred_mask, ["delta_lat", "delta_lon"]]
 
                     if len(input_df) == 0 or len(pred_df) == 0:
                         start_time += self.stride
