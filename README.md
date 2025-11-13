@@ -22,3 +22,4 @@ Lightweight project for experimenting with AIS vessel trajectory modeling and sm
 - Add distance-based evaluation metrics (e.g., haversine distance between predicted and true positions).
 - Move non-essential outputs (temporary files, error dumps) to `.gitignore`.
 
+
