@@ -224,6 +224,12 @@ def preprocess_data(df, max_speed_kmh=100, max_time=4, max_dist=50):
         & (df["dist_km"] <= max_dist)
     ].reset_index(drop=True)
 
+    # Keep points above minimum speed
+    min_speed_kmh = 6
+    df = df[((df["speed_kmh"] > min_speed_kmh) | (df["speed_kmh"].isna()))].reset_index(
+        drop=True
+    )
+
     # Drop temporary columns
     df.drop(
         columns=["x_prev", "y_prev", "t_prev", "dist_km", "dt_h", "speed_kmh"],
