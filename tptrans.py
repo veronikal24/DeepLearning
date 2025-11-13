@@ -156,7 +156,7 @@ def _train(
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
             # simplest: use the last observed position as start token
-            tgt_start = x[:, -1:, 2:4]  # grab lat/lon
+            tgt_start = x[:, -1:, :2]  # grab lat/lon
             optimizer.zero_grad()
             pred = model(x, tgt_start)
             loss = criterion(pred, y)
@@ -171,7 +171,7 @@ def _train(
         with torch.no_grad():
             for x, y in val_loader:
                 x, y = x.to(device), y.to(device)
-                tgt_start = x[:, -1:, 2:4]  # grab lat/lon
+                tgt_start = x[:, -1:, :2]  # grab lat/lon
                 pred = model(x, tgt_start)
                 loss = criterion(pred, y)
                 val_loss += loss.item() * x.size(0)
@@ -200,7 +200,7 @@ def _evaluate(model, test_loader, device):
     with torch.no_grad():
         for x, y in test_loader:
             x, y = x.to(device), y.to(device)
-            tgt_start = x[:, -1:, 2:4]  # (batch, 1, 2) lat/lon
+            tgt_start = x[:, -1:, :2]  # (batch, 1, 2) lat/lon
             pred = model(x, tgt_start)
             loss = criterion(pred, y)
             test_loss += loss.item() * x.size(0)
