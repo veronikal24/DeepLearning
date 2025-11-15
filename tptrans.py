@@ -254,5 +254,5 @@ def train_model_from_dataset(k=100, epochs=100, save_model=""):
 
 if __name__ == "__main__":
     model = train_model_from_dataset(
-        k=1000, epochs=200, save_model="tptrans_delta_lin_newNewParams"
+        k=1500, epochs=400, save_model="tptrans_delta_lin_newNewParams"
     )
