@@ -20,8 +20,8 @@
 module load cuda
 
 # changes directory into your home (change this to your own home path (which you can find with 'echo $HOME'))
-#cd /zhome/b1/8/213657/
-cd /zhome/63/7/219953/
+cd /zhome/b1/8/213657/
+#cd /zhome/63/7/219953/
 # sources the python virtual environment (not sure if you need this, probably not if you installed everything in the base python)
 source venv/bin/activate
 # changes directory into the deep learning project folder
