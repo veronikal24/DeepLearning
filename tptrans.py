@@ -3,46 +3,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import random_split, DataLoader
 from dataloader import load_parquet, preprocess_data, SlidingWindowDataset
+from utils import deltas_to_coords, PenalizedCoordLoss
 
-
-class WeightedStepMSELoss(nn.Module):
-    """
-    MSE loss with increasing weights for later steps in a sequence.
-    
-    mode: 'linear' or 'exponential' weighting. Default: Equal weighting (None).
-    start_weight: Lowest assigned weight
-    end_weight: Highest assigned weight
-    """
-    def __init__(self, mode="", start_weight=100.0, end_weight=1000.0):
-        super().__init__()
-        self.mode = mode
-        self.start_weight = start_weight
-        self.end_weight = end_weight
-
-    def forward(self, y_pred, y_true):
-        # y_pred, y_true: (batch_size, seq_len, features)
-        batch_size, seq_len, n_features = y_pred.shape
-
-        # Create weights along the sequence dimension
-        if self.mode.startswith('lin'):
-            weights = torch.linspace(self.start_weight, self.end_weight, steps=seq_len, device=y_pred.device)
-        elif self.mode.startswith('exp'):
-            weights = torch.exp(torch.linspace(self.start_weight, self.end_weight, steps=seq_len, device=y_pred.device))
-        else:
-            weights = torch.ones(seq_len, device=y_pred.device)
-
-        # Reshape for broadcasting: (1, seq_len, 1)
-        weights = weights.view(1, seq_len, 1)
-
-        # Compute squared error
-        se = (y_pred - y_true) ** 2
-
-        # Apply weights per step (broadcast over batch and features)
-        weighted_se = se * weights
-
-        # Mean over batch, sequence, and features
-        loss = weighted_se.mean()
-        return loss
 
 # --- Positional Encoding ---
 class PositionalEncoding(nn.Module):
@@ -146,9 +108,10 @@ def _train(
 
     # Setup optimizer and loss
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.MSELoss()
+    # criterion = nn.MSELoss()
     # criterion = WeightedStepMSELoss(mode="lin")
     # criterion = nn.HuberLoss()
+    criterion = PenalizedCoordLoss(nn.MSELoss())
 
     for epoch in range(epochs):
         model.train()
@@ -156,10 +119,11 @@ def _train(
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
             # simplest: use the last observed position as start token
-            tgt_start = x[:, -1:, :2]  # grab lat/lon
+            tgt_start = x[:, -1:, :2]  # grab delta_lat/lon
             optimizer.zero_grad()
             pred = model(x, tgt_start)
-            loss = criterion(pred, y)
+            # loss = criterion(pred, y)
+            loss = criterion(deltas_to_coords(x, pred), deltas_to_coords(x, y))
             loss.backward()
             optimizer.step()
             running_loss += loss.item() * x.size(0)
@@ -171,9 +135,13 @@ def _train(
         with torch.no_grad():
             for x, y in val_loader:
                 x, y = x.to(device), y.to(device)
-                tgt_start = x[:, -1:, 2:4]  # grab lat/lon
+                tgt_start = x[:, -1:, :2]  # grab lat/lon
                 pred = model(x, tgt_start)
-                loss = criterion(pred, y)
+                # loss = criterion(pred, y)
+                loss = criterion(
+                    deltas_to_coords(x, pred),
+                    deltas_to_coords(x, y),
+                )
                 val_loss += loss.item() * x.size(0)
         val_loss /= val_size
 
@@ -200,9 +168,10 @@ def _evaluate(model, test_loader, device):
     with torch.no_grad():
         for x, y in test_loader:
             x, y = x.to(device), y.to(device)
-            tgt_start = x[:, -1:, 2:4]  # (batch, 1, 2) lat/lon
+            tgt_start = x[:, -1:, :2]  # (batch, 1, 2) lat/lon
             pred = model(x, tgt_start)
             loss = criterion(pred, y)
+            loss = criterion(deltas_to_coords(x, pred), deltas_to_coords(x, y))
             test_loss += loss.item() * x.size(0)
     test_loss /= len(test_loader.dataset)
     print(f"Test Loss: {test_loss:.6f}", flush=True)
