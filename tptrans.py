@@ -135,32 +135,29 @@ def _train(
     test_split=0.1,
     save_model=False,
 ):
-    # Calculate sizes for splits
     total_size = len(dataset)
     val_size = int(total_size * val_split)
     test_size = int(total_size * test_split)
     train_size = total_size - val_size - test_size
 
-    # Split dataset
     train_dataset, val_dataset, test_dataset = random_split(
         dataset, [train_size, val_size, test_size]
     )
 
-    # Create dataloaders
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    # Setup optimizer and loss
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    # criterion = nn.MSELoss()
+    criterion = nn.MSELoss()
     # criterion = WeightedStepMSELoss(mode="lin")
     # criterion = nn.HuberLoss()
-    criterion = PenalizedCoordLoss(nn.MSELoss())
+    # criterion = PenalizedCoordLoss(nn.MSELoss())
 
     for epoch in range(epochs):
         model.train()
         running_loss = 0.0
+
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
@@ -169,9 +166,9 @@ def _train(
             loss.backward()
             optimizer.step()
             running_loss += loss.item() * x.size(0)
+
         avg_loss = running_loss / train_size
 
-        # Optional: compute validation loss
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
@@ -180,11 +177,11 @@ def _train(
                 pred = model(x)
                 loss = criterion(deltas_to_coords(x, pred), deltas_to_coords(x, y))
                 val_loss += loss.item() * x.size(0)
+
         val_loss /= val_size
 
-        if save_model and epoch % 25 == 0 and epoch > 25:
-            if not os.path.exists("checkpoints"):
-                os.makedirs("checkpoints")
+        if save_model and epoch % 50 == 0 and epoch > 0:
+            os.makedirs("checkpoints", exist_ok=True)
             torch.save(
                 model.state_dict(),
                 os.path.join("checkpoints", f"{save_model}_{str(epoch)}.pth"),
