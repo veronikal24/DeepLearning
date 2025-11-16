@@ -292,8 +292,9 @@ if __name__ == "__main__":
         "Training: Learning rate",
     ]
     print(
-        "Starting training for TPTrans with the following parameters:"
-        + "\n".join(a + " - " + b for a, b in zip(argnames, savename.split("_")[1:]))
+        "Starting training for TPTrans with the following parameters:\n\t"
+        + "\n\t".join(a + " - " + b for a, b in zip(argnames, savename.split("_")[1:]))
+        + "\n"
     )
 
     model = train_model_from_dataset(
