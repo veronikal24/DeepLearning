@@ -6,78 +6,123 @@ from dataloader import load_parquet, preprocess_data, SlidingWindowDataset
 from utils import deltas_to_coords, PenalizedCoordLoss
 
 
-# --- Positional Encoding ---
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=500):
+    def __init__(self, d_model, max_len=5000):
         super().__init__()
         pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        position = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
         div_term = torch.exp(
-            torch.arange(0, d_model, 2).float()
+            torch.arange(0, d_model, 2, dtype=torch.float32)
             * (-torch.log(torch.tensor(10000.0)) / d_model)
         )
         pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)  # shape (1, max_len, d_model)
+        if d_model % 2 == 1:
+            pe[:, 1::2] = torch.cos(position * div_term[:-1])
+        else:
+            pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer("pe", pe)
+        self.d_model = d_model
 
     def forward(self, x):
-        # x: (batch_size, seq_len, d_model)
-        x = x + self.pe[:, : x.size(1)]
-        return x
+        seq_len = x.size(0)
+        return x + self.pe[:seq_len].unsqueeze(1).to(x.device).to(x.dtype)
 
 
-# --- TPtrans-like Model ---
 class TPTrans(nn.Module):
     def __init__(
         self,
         input_dim=6,
-        d_model=512,
+        d_model=256,
         nhead=8,
-        num_encoder_layers=4,
-        num_decoder_layers=4,
-        pred_len=5,
+        num_encoder_layers=8,
+        pred_len=6,
+        conv_kernel=3,
+        conv_padding=1,
     ):
         super().__init__()
-        self.conv = nn.Conv1d(input_dim, d_model, kernel_size=5, padding=1)
-        self.pos_encoder = PositionalEncoding(d_model)
-        self.pos_decoder = PositionalEncoding(d_model)
-
-        enc_layer = nn.TransformerEncoderLayer(d_model, nhead, 4 * d_model)
-        self.encoder = nn.TransformerEncoder(enc_layer, num_encoder_layers)
-
-        self.decoder_input_proj = nn.Linear(2, d_model)
-        dec_layer = nn.TransformerDecoderLayer(d_model, nhead, 4 * d_model)
-        self.decoder = nn.TransformerDecoder(dec_layer, num_decoder_layers)
-
-        self.output_head = nn.Linear(d_model, 2)  # lat, lon
+        self.input_dim = input_dim
+        self.d_model = d_model
         self.pred_len = pred_len
 
-    def forward(self, src, tgt_start):
-        # src: (batch, src_len, input_dim)
-        # tgt_start: start token or last known position (batch, 1, input_dim)
-        src = src.permute(1, 0, 2)
-        src = self.conv(src.permute(1, 2, 0)).permute(2, 0, 1)
-        src = self.pos_encoder(src)
-        memory = self.encoder(src)
+        # project 6 inputs to d_model
+        self.input_proj = nn.Linear(input_dim, d_model)
 
-        # initial decoder input: project last known position
-        tgt = self.decoder_input_proj(tgt_start.permute(1, 0, 2))  # (1, batch, d_model)
-        tgt = self.pos_decoder(tgt)
+        # positional encoding as first block
+        self.pos_encoder = PositionalEncoding(d_model, max_len=2048)
 
-        preds = []
-        for _ in range(self.pred_len):
-            out = self.decoder(tgt, memory)  # (seq_len, batch, d_model)
-            step = self.output_head(out[-1])  # (batch, 2)
-            preds.append(step)
+        # convolution for short-term feature extraction
+        self.conv = nn.Conv1d(
+            d_model, d_model, kernel_size=conv_kernel, padding=conv_padding
+        )
 
-            # project predicted step to embedding space for next timestep
-            step_emb = self.decoder_input_proj(step).unsqueeze(0)  # (1, batch, d_model)
-            step_emb = self.pos_decoder(step_emb)  # add positional encoding
+        # Transformer encoder for global extraction
+        ffn_dim = 4 * d_model
+        enc_layer = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward=ffn_dim)
+        self.encoder = nn.TransformerEncoder(enc_layer, num_encoder_layers)
 
-            # append to tgt sequence
-            tgt = torch.cat([tgt, step_emb], dim=0)  # now all dims match
-        return torch.stack(preds, dim=1)  # (batch, pred_len, 2)
+        # decoder positional encoding
+        self.pos_decoder = PositionalEncoding(d_model, max_len=2048)
+
+        # two-channel sequential linear layer decoding for prediction
+        self.decoder_delta_lat = nn.Sequential(
+            nn.Linear(d_model, d_model), nn.ReLU(inplace=True), nn.Linear(d_model, 1)
+        )
+        self.decoder_delta_lon = nn.Sequential(
+            nn.Linear(d_model, d_model), nn.ReLU(inplace=True), nn.Linear(d_model, 1)
+        )
+
+    def forward(self, src, pred_len=None):
+        if pred_len is None:
+            pred_len = self.pred_len
+
+        batch, src_len, d_model = src.shape
+
+        # project input to d_model
+        x = self.input_proj(src)  # (batch, src_len, d_model)
+
+        # positional encoding
+        x = x.permute(1, 0, 2)  # (src_len, batch, d_model)
+        x = self.pos_encoder(x)
+
+        # convolution
+        x_conv = x.permute(1, 2, 0)  # (batch, d_model, src_len)
+        x_conv = self.conv(x_conv)
+        memory = x_conv.permute(2, 0, 1)  # (src_len, batch, d_model)
+
+        # transformer encoder
+        memory = self.encoder(memory)
+        # global context (mean pooling)
+        context = memory.mean(dim=0)
+
+        # init decoder positional encodings for future steps with zeros
+        zeros_for_pos = torch.zeros(
+            pred_len, batch, self.d_model, device=src.device, dtype=memory.dtype
+        )
+        tgt_pos = self.pos_decoder(zeros_for_pos)
+
+        # combine context + positional encoding
+        context_expanded = context.unsqueeze(0).expand(pred_len, -1, -1)
+        dec_in = context_expanded + tgt_pos
+
+        # flatten for FC layers
+        dec_flat = dec_in.reshape(pred_len * batch, self.d_model)
+
+        # predict deltas
+        delta_lat_flat = self.decoder_delta_lat(dec_flat)
+        delta_lon_flat = self.decoder_delta_lon(dec_flat)
+
+        delta_lat = delta_lat_flat.view(pred_len, batch)
+        delta_lon = delta_lon_flat.view(pred_len, batch)
+
+        # from (pred_len, batch) to (batch, pred_len)
+        delta_lat = delta_lat.permute(1, 0)
+        delta_lon = delta_lon.permute(1, 0)
+
+        # combine lat and lon channels to one tensor
+        preds = torch.stack([delta_lat, delta_lon], dim=2)
+
+        return preds
+
 
 def _train(
     model,
@@ -118,11 +163,8 @@ def _train(
         running_loss = 0.0
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
-            # simplest: use the last observed position as start token
-            tgt_start = x[:, -1:, :2]  # grab delta_lat/lon
             optimizer.zero_grad()
-            pred = model(x, tgt_start)
-            # loss = criterion(pred, y)
+            pred = model(x)
             loss = criterion(deltas_to_coords(x, pred), deltas_to_coords(x, y))
             loss.backward()
             optimizer.step()
@@ -135,13 +177,8 @@ def _train(
         with torch.no_grad():
             for x, y in val_loader:
                 x, y = x.to(device), y.to(device)
-                tgt_start = x[:, -1:, :2]  # grab lat/lon
-                pred = model(x, tgt_start)
-                # loss = criterion(pred, y)
-                loss = criterion(
-                    deltas_to_coords(x, pred),
-                    deltas_to_coords(x, y),
-                )
+                pred = model(x)
+                loss = criterion(deltas_to_coords(x, pred), deltas_to_coords(x, y))
                 val_loss += loss.item() * x.size(0)
         val_loss /= val_size
 
@@ -168,9 +205,7 @@ def _evaluate(model, test_loader, device):
     with torch.no_grad():
         for x, y in test_loader:
             x, y = x.to(device), y.to(device)
-            tgt_start = x[:, -1:, :2]  # (batch, 1, 2) lat/lon
-            pred = model(x, tgt_start)
-            loss = criterion(pred, y)
+            pred = model(x)
             loss = criterion(deltas_to_coords(x, pred), deltas_to_coords(x, y))
             test_loss += loss.item() * x.size(0)
     test_loss /= len(test_loader.dataset)
