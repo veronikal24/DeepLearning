@@ -1,6 +1,7 @@
 import os
 import torch
 import torch.nn as nn
+import argparse
 from torch.utils.data import random_split, DataLoader
 from dataloader import load_parquet, preprocess_data, SlidingWindowDataset
 from utils import deltas_to_coords, PenalizedCoordLoss
@@ -183,8 +184,8 @@ def _train(
         if save_model and epoch % 50 == 0 and epoch > 0:
             os.makedirs("checkpoints", exist_ok=True)
             torch.save(
-                model.state_dict(),
-                os.path.join("checkpoints", f"{save_model}_{str(epoch)}.pth"),
+                model,
+                os.path.join("checkpoints", f"{save_model}_{epoch}.pth"),
             )
 
         print(
@@ -210,16 +211,26 @@ def _evaluate(model, test_loader, device):
     return test_loss
 
 
-def train_model_from_dataset(k=100, epochs=100, save_model=""):
-    df = load_parquet("aisdk-2025-02-27", k=k)
+def train_model_from_dataset(
+    k=100,
+    epochs=100,
+    ds_diff_in_seq=15,
+    ds_window_total=420,
+    ds_window_pred=120,
+    ds_stride=15,
+    training_batchsize=32,
+    training_lr=1e-4,
+    save_model=False,
+):
+    df = load_parquet("dataset", k=k)
     df = preprocess_data(df)
 
     dataset = SlidingWindowDataset(
         df,
-        max_diff_per_sequence_minutes=15,
-        window_size_minutes=420,
-        pred_size_minutes=120,
-        stride=15,
+        max_diff_per_sequence_minutes=ds_diff_in_seq,
+        window_size_minutes=ds_window_total,
+        pred_size_minutes=ds_window_pred,
+        stride=ds_stride,
     )
     print(f"Total dataset size: {len(dataset)}", flush=True)
 
@@ -231,8 +242,8 @@ def train_model_from_dataset(k=100, epochs=100, save_model=""):
         model,
         dataset,
         device,
-        batch_size=64,
-        lr=1e-5,
+        batch_size=training_batchsize,
+        lr=training_lr,
         epochs=epochs,
         save_model=save_model,
     )
@@ -240,20 +251,59 @@ def train_model_from_dataset(k=100, epochs=100, save_model=""):
     _evaluate(trained_model, test_loader, device)
 
     if save_model:
-        if not os.path.exists("checkpoints"):
-            os.makedirs("checkpoints")
+        os.makedirs("checkpoints", exist_ok=True)
         torch.save(
-            trained_model.state_dict(), os.path.join("checkpoints", f"{save_model}.pth")
+            trained_model,
+            os.path.join(
+                "checkpoints",
+                f"{save_model}.pth",
+            ),
         )
         # to load later:
-        # model = TPTrans()
-        # model.load_state_dict(torch.load(filepath))
+        # model = torch.load(filepath)
         # model.eval()
 
     return trained_model
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Training script parameters")
+    parser.add_argument("--k", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--ds_diff_in_seq", type=int, default=15)
+    parser.add_argument("--ds_window_total", type=int, default=420)
+    parser.add_argument("--ds_window_pred", type=int, default=120)
+    parser.add_argument("--ds_stride", type=int, default=15)
+    parser.add_argument("--training_batchsize", type=int, default=32)
+    parser.add_argument("--training_lr", type=float, default=1e-4)
+    args = parser.parse_args()
+
+    savename = False
+    savename = f"t_{args.k}_{args.epochs}_{args.ds_diff_in_seq}_{args.ds_window_total}_{args.ds_window_pred}_{args.ds_stride}_{args.training_batchsize}_{args.training_lr}"
+
+    argnames = [
+        "k",
+        "epochs",
+        "DS: Max timediff in seq",
+        "DS: Total window size",
+        "DS: Prediction window size",
+        "DS: Stride",
+        "Training: Batch size",
+        "Training: Learning rate",
+    ]
+    print(
+        "Starting training for TPTrans with the following parameters:"
+        + "\n".join(a + " - " + b for a, b in zip(argnames, savename.split("_")[1:]))
+    )
+
     model = train_model_from_dataset(
-        k=1000, epochs=200, save_model="tptrans_delta_lin_newNewParams"
+        k=args.k,
+        epochs=args.epochs,
+        ds_diff_in_seq=args.ds_diff_in_seq,
+        ds_window_total=args.ds_window_total,
+        ds_window_pred=args.ds_window_pred,
+        ds_stride=args.ds_stride,
+        training_batchsize=args.training_batchsize,
+        training_lr=args.training_lr,
+        save_model=savename,
     )
