@@ -4,8 +4,9 @@ venv/
 __pycache__/
 *.pyc
 .env
-*.log
-*.err
+logs/*.log
+logs/*.err
+command_scripts/job.sh
 
 # Data files
 *.parquet

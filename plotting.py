@@ -68,14 +68,11 @@ def plot_dataset_sample(dataset):
         ax.add_feature(cfeature.RIVERS)
 
         for x, y in dataset[sample[i] : sample[i] + 1]:
-            xn = (
-                x[:, 2].numpy(), 
-                x[:, 3].numpy()
-            ) # cols 2 and 3 are latitude / lon
+            xn = (x[:, 2].numpy(), x[:, 3].numpy())  # cols 2 and 3 are latitude / lon
             yn = (
-                xn[0][-1]+np.cumsum(y[:, 0].numpy()), 
-                xn[1][-1]+np.cumsum(y[:, 1].numpy())
-            ) # cols 0 and 1 are delta_lat / delta_lon
+                xn[0][-1] + np.cumsum(y[:, 0].numpy()),
+                xn[1][-1] + np.cumsum(y[:, 1].numpy()),
+            )  # cols 0 and 1 are delta_lat / delta_lon
             min_lon, max_lon = (
                 min(min(xn[1]), min(yn[1])) - 1,
                 max(max(xn[1]), max(yn[1])) + 1,
@@ -101,11 +98,11 @@ def plot_dataset_sample(dataset):
 def plot_testresult_sample(dataset):
     # Create 4 subplots
     fig, axs = plt.subplots(
-        2, 2, figsize=(14, 10), subplot_kw={"projection": ccrs.PlateCarree()}
+        4, 2, figsize=(14, 10), subplot_kw={"projection": ccrs.PlateCarree()}
     )
     axs = axs.flatten()
 
-    sample = random.sample(range(len(dataset)), 4)
+    sample = random.sample(range(len(dataset)), 8)
 
     for i, ax in enumerate(axs):
         ax.add_feature(cfeature.LAND)
@@ -119,12 +116,12 @@ def plot_testresult_sample(dataset):
             xn = (x.squeeze(0).numpy()[:, 2], x.squeeze(0).numpy()[:, 3])
             yn = (y.squeeze(0).numpy()[:, 0], y.squeeze(0).numpy()[:, 1])
             yn = (
-                xn[0][-1]+np.cumsum(y.squeeze(0).numpy()[:, 0]), 
-                xn[1][-1]+np.cumsum(y.squeeze(0).numpy()[:, 1])
+                xn[0][-1] + np.cumsum(y.squeeze(0).numpy()[:, 0]),
+                xn[1][-1] + np.cumsum(y.squeeze(0).numpy()[:, 1]),
             )
             pn = (
-                xn[0][-1]+np.cumsum(p.squeeze(0).numpy()[:, 0]), 
-                xn[1][-1]+np.cumsum(p.squeeze(0).numpy()[:, 1])
+                xn[0][-1] + np.cumsum(p.squeeze(0).numpy()[:, 0]),
+                xn[1][-1] + np.cumsum(p.squeeze(0).numpy()[:, 1]),
             )
             min_lon, max_lon = (
                 min(min(xn[1]), min(yn[1])) - 1,
