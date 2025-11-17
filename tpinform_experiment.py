@@ -340,7 +340,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     savename = False
-    savename = f"t_{args.k}_{args.epochs}_{args.ds_diff_in_seq}_{args.ds_window_total}_{args.ds_window_pred}_{args.ds_stride}_{args.training_batchsize}_{args.training_lr}"
+    savename = f"tpinform_experiment_{args.k}_{args.epochs}_{args.ds_diff_in_seq}_{args.ds_window_total}_{args.ds_window_pred}_{args.ds_stride}_{args.training_batchsize}_{args.training_lr}"
 
     argnames = [
         "k",

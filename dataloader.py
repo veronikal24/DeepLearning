@@ -6,7 +6,7 @@ import pyarrow.parquet
 
 import numpy as np
 import pandas as pd
-
+from collections import defaultdict
 from pyproj import Transformer
 from torch.utils.data import Dataset
 
