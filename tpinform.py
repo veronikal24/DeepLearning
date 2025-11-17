@@ -5,7 +5,7 @@ from torch.utils.data import random_split, DataLoader
 from dataloader import load_parquet, preprocess_data, SlidingWindowDataset
 from informer_original_paper import EncoderLayer, DecoderLayer, Encoder, Decoder, AttentionLayer, ProbAttention, FullAttention, ConvLayer
 import argparse
-from utils import deltas_to_coords
+from utils import deltas_to_coords, PenalizedCoordLoss
 
 
 class PositionalEncoding(nn.Module):
@@ -211,7 +211,7 @@ def _train(
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.MSELoss()
+    criterion = PenalizedCoordLoss(nn.MSELoss())
 
     # criterion = PenalizedCoordLoss(nn.MSELoss())
 
