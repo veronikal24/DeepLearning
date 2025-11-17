@@ -283,7 +283,7 @@ def train_model_from_dataset(
     training_lr=1e-4,
     save_model=False,
 ):
-    df = load_parquet("aisdk-2025-02-27", k=k)
+    df = load_parquet("dataset", k=k)
     df = preprocess_data(df)
 
     dataset = SlidingWindowDataset(

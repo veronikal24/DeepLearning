@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 
 from pyproj import Transformer
-from collections import defaultdict
 from torch.utils.data import Dataset
 
 # from plotting import plot_paths_on_map
