@@ -7,8 +7,14 @@ from dataloader import load_parquet, preprocess_data, SlidingWindowDataset
 from utils import deltas_to_coords, PenalizedCoordLoss
 
 
-from informer_original_paper import ProbAttention, AttentionLayer, EncoderLayer
-
+from informer_original_paper import (
+    ProbAttention,
+    FullAttention,
+    AttentionLayer,
+    EncoderLayer,
+    DecoderLayer,
+    Decoder,
+)
 
 
 class PositionalEncoding(nn.Module):
@@ -30,9 +36,8 @@ class PositionalEncoding(nn.Module):
 
     def forward(self, x):
         """
-        Expects (seq_len, batch, d_model), same as PyTorch's Transformer.
-        If your Informer implementation uses (batch, seq_len, d_model),
-        you can permute before/after calling this.
+        Here we assume x is (seq_len, batch, d_model),
+        because that matches typical Transformer-style PE.
         """
         seq_len = x.size(0)
         return x + self.pe[:seq_len].unsqueeze(1).to(x.device).to(x.dtype)
@@ -45,6 +50,7 @@ class TPTrans(nn.Module):
         d_model=256,
         nhead=8,
         num_encoder_layers=8,
+        num_decoder_layers=2,
         pred_len=6,
         conv_kernel=3,
         conv_padding=1,
@@ -57,33 +63,27 @@ class TPTrans(nn.Module):
         # project 6 inputs to d_model
         self.input_proj = nn.Linear(input_dim, d_model)
 
-        # positional encoding as first block
+        # positional encoding for encoder and decoder
         self.pos_encoder = PositionalEncoding(d_model, max_len=2048)
+        self.pos_decoder = PositionalEncoding(d_model, max_len=2048)
 
         # convolution for short-term feature extraction
         self.conv = nn.Conv1d(
             d_model, d_model, kernel_size=conv_kernel, padding=conv_padding
         )
 
-        # ======== NEW: Informer-style encoder stack ========
+        # ===== Informer-style encoder =====
         d_ff = 512
         activation = "gelu"
         factor = 5
         dropout = 0.1
         Attn = ProbAttention
 
-        # We keep the same (seq_len, batch, d_model) shape flowing into the encoder
-        # as in your original code.
         self.encoder_layers = nn.ModuleList(
             [
                 EncoderLayer(
                     AttentionLayer(
-                        Attn(
-                            False,
-                            factor,
-                            attention_dropout=dropout,
-                            output_attention=False,
-                        ),
+                        Attn(False, factor, attention_dropout=dropout, output_attention=False),
                         d_model,
                         nhead,
                         mix=False,
@@ -96,79 +96,94 @@ class TPTrans(nn.Module):
                 for _ in range(num_encoder_layers)
             ]
         )
-        # ===================================================
 
-        # decoder positional encoding
-        self.pos_decoder = PositionalEncoding(d_model, max_len=2048)
+        # ===== Informer-style decoder =====
+        dec_layers = [
+            DecoderLayer(
+                self_attention=AttentionLayer(
+                    Attn(True, factor, attention_dropout=dropout, output_attention=False),
+                    d_model,
+                    nhead,
+                    mix=True,
+                ),
+                cross_attention=AttentionLayer(
+                    FullAttention(False, factor, attention_dropout=dropout, output_attention=False),
+                    d_model,
+                    nhead,
+                    mix=False,
+                ),
+                d_model=d_model,
+                d_ff=d_ff,
+                dropout=dropout,
+                activation=activation,
+            )
+            for _ in range(num_decoder_layers)
+        ]
 
-        # two-channel sequential linear layer decoding for prediction
-        self.decoder_delta_lat = nn.Sequential(
-            nn.Linear(d_model, d_model), nn.ReLU(inplace=True), nn.Linear(d_model, 1)
+        self.decoder = Decoder(
+            layers=dec_layers,
+            norm_layer=nn.LayerNorm(d_model),
         )
-        self.decoder_delta_lon = nn.Sequential(
-            nn.Linear(d_model, d_model), nn.ReLU(inplace=True), nn.Linear(d_model, 1)
-        )
+
+        # final projection from model dimension to (delta_lat, delta_lon)
+        self.out_proj = nn.Linear(d_model, 2)
 
     def forward(self, src, pred_len=None):
+        """
+        src: (batch, src_len, input_dim)
+        returns: (batch, pred_len, 2) deltas
+        """
         if pred_len is None:
             pred_len = self.pred_len
 
         batch, src_len, d_in = src.shape
         assert d_in == self.input_dim, f"Expected input_dim={self.input_dim}, got {d_in}"
 
+        # ----- Encoder -----
         # project input to d_model
         x = self.input_proj(src)  # (batch, src_len, d_model)
 
         # positional encoding expects (seq_len, batch, d_model)
-        x = x.permute(1, 0, 2)  # (src_len, batch, d_model)
-        x = self.pos_encoder(x)
+        x_pe = x.permute(1, 0, 2)  # (src_len, batch, d_model)
+        x_pe = self.pos_encoder(x_pe)
+        x = x_pe.permute(1, 0, 2)  # back to (batch, src_len, d_model)
 
         # convolution: conv1d expects (batch, channels, seq_len)
-        x_conv = x.permute(1, 2, 0)  # (batch, d_model, src_len)
+        x_conv = x.permute(0, 2, 1)  # (batch, d_model, src_len)
         x_conv = self.conv(x_conv)
+        memory = x_conv.permute(0, 2, 1)  # (batch, src_len, d_model)
 
-        # back to (seq_len, batch, d_model) for the encoder
-        memory = x_conv.permute(2, 0, 1)  # (src_len, batch, d_model)
-
-        # ======== NEW: pass through Informer-style encoder layers ========
-        # Typical Informer EncoderLayer returns (x, attn); we ignore the attention map.
+        # pass through encoder layers
         for layer in self.encoder_layers:
-            # If your EncoderLayer has signature (x, attn_mask=None), this works.
-            # If it only takes (x), just remove attn_mask.
-            memory, _ = layer(memory, attn_mask=None)
-        # ================================================================
+            # typical Informer EncoderLayer returns (enc_out, attn)
+            memory, _ = layer(memory, attn_mask=None)  # memory: (batch, src_len, d_model)
 
-        # global context (mean pooling over time)
-        context = memory.mean(dim=0)  # (batch, d_model)
+        # ----- Decoder -----
+        # create decoder input "query" sequence for pred_len steps
+        # simplest: just zeros + positional encoding
+        tgt = torch.zeros(
+            batch, pred_len, self.d_model, device=src.device, dtype=memory.dtype
+        )  # (batch, pred_len, d_model)
 
-        # init decoder positional encodings for future steps with zeros
-        zeros_for_pos = torch.zeros(
-            pred_len, batch, self.d_model, device=src.device, dtype=memory.dtype
-        )
-        tgt_pos = self.pos_decoder(zeros_for_pos)
+        # positional encoding on decoder inputs
+        tgt_pe = tgt.permute(1, 0, 2)  # (pred_len, batch, d_model)
+        tgt_pe = self.pos_decoder(tgt_pe)
+        tgt = tgt_pe.permute(1, 0, 2)  # (batch, pred_len, d_model)
 
-        # combine context + positional encoding
-        context_expanded = context.unsqueeze(0).expand(pred_len, -1, -1)
-        dec_in = context_expanded + tgt_pos  # (pred_len, batch, d_model)
+        # Informer-style decoder call:
+        # decoder(x=tgt, cross=memory, x_mask=None, cross_mask=None)
+        dec_out = self.decoder(
+            tgt,
+            memory,
+            x_mask=None,
+            cross_mask=None,
+        )  # (batch, pred_len, d_model)
 
-        # flatten for FC layers
-        dec_flat = dec_in.reshape(pred_len * batch, self.d_model)
-
-        # predict deltas
-        delta_lat_flat = self.decoder_delta_lat(dec_flat)
-        delta_lon_flat = self.decoder_delta_lon(dec_flat)
-
-        delta_lat = delta_lat_flat.view(pred_len, batch)
-        delta_lon = delta_lon_flat.view(pred_len, batch)
-
-        # from (pred_len, batch) to (batch, pred_len)
-        delta_lat = delta_lat.permute(1, 0)
-        delta_lon = delta_lon.permute(1, 0)
-
-        # combine lat and lon channels to one tensor
-        preds = torch.stack([delta_lat, delta_lon], dim=2)  # (batch, pred_len, 2)
+        # project to (delta_lat, delta_lon)
+        preds = self.out_proj(dec_out)  # (batch, pred_len, 2)
 
         return preds
+
 
 
 def _train(

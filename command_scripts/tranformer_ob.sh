@@ -27,4 +27,13 @@ source venv/bin/activate
 # changes directory into the deep learning project folder
 cd DeepLearning-1
 # executes the script
-python tptrans.py
+python tptrans.py \
+    --k 1500 \
+    --epochs 300 \
+    --ds_diff_in_seq 20 \
+    --ds_window_total 420 \
+    --ds_window_pred 120 \
+    --ds_stride 15 \
+    --training_batchsize 64 \
+    --training_lr 5e-4
+

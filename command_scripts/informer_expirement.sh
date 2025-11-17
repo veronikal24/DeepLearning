@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #BSUB -J DL_Boats                  # Job name
-#BSUB -o logs/output_informer%J.log                # Output log file (including job ID %J)
-#BSUB -e logs/error_informer%J.err                 # Error log file
+#BSUB -o logs/output_informerexper_%J.log                # Output log file (including job ID %J)
+#BSUB -e logs/error__informerexper%J.err                 # Error log file
 #BSUB -q gpuv100                          # Queue name (gpu queue)
 #BSUB -gpu "num=1:mode=exclusive_process"   # Request 1 GPU
 #BSUB -R "rusage[mem=5G]"             # Request 5 GB of RAM
