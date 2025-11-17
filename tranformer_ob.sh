@@ -1,9 +1,9 @@
 #!/bin/bash
 
-#BSUB -J DL_Boats                  # Job name
+#BSUB -J DL_Transformer                  # Job name
 #BSUB -o logs/output__trans%J.log                # Output log file (including job ID %J)
 #BSUB -e logs/error_trans_%J.err                 # Error log file
-#BSUB -q gpua10                          # Queue name (gpu queue)
+#BSUB -q gpua100                          # Queue name (gpu queue)
 #BSUB -gpu "num=1:mode=exclusive_process"   # Request 1 GPU
 #BSUB -R "rusage[mem=2G]"             # Request 5 GB of RAM
 #BSUB -W 08:00                        # Time limit (8 hours)
@@ -27,9 +27,9 @@ source venv/bin/activate
 # changes directory into the deep learning project folder
 cd DeepLearning-1
 # executes the script
-python tptrans.py \
+python tptrans.py\
     --k 1500 \
-    --epochs 300 \
+    --epochs 400 \
     --ds_diff_in_seq 20 \
     --ds_window_total 420 \
     --ds_window_pred 120 \

@@ -227,7 +227,7 @@ def _train(
 
         val_loss /= val_size
 
-        if save_model and epoch % 50 == 0 and epoch > 0:
+        if save_model and epoch % 100 == 0 and epoch > 0:
             os.makedirs("checkpoints", exist_ok=True)
             torch.save(
                 model,
