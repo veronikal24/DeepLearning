@@ -17,3 +17,6 @@ __pycache__/
 
 # Dataset
 dataset/
+
+# Ablation testing 
+ablation_studies/
