@@ -1,6 +1,20 @@
 import torch
+import numpy as np
 import torch.nn as nn
 from global_land_mask import globe  # assuming `global-land-mask` is installed
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Load contents from globe package once
+_land_mask_np = np.logical_not(globe._mask)  # converts ocean-mask to land-mask
+_land_mask = torch.from_numpy(_land_mask_np)  # shape [21600, 43200], dtype=bool
+_land_mask = _land_mask.to(device)  # stays on GPU permanently
+
+_lat_vals = torch.from_numpy(globe._lat).float().to(device)
+_lon_vals = torch.from_numpy(globe._lon).float().to(device)
+
+lat0, dlat = _lat_vals[0], _lat_vals[1] - _lat_vals[0]
+lon0, dlon = _lon_vals[0], _lon_vals[1] - _lon_vals[0]
 
 
 def deltas_to_coords(
@@ -18,52 +32,37 @@ def deltas_to_coords(
     return abs_coords
 
 
+def latlon_to_index(lat, lon):
+    # clamp
+    lat_i = torch.clamp((lat - lat0) / dlat, 0, _lat_vals.numel() - 1)
+    lon_i = torch.clamp((lon - lon0) / dlon, 0, _lon_vals.numel() - 1)
+
+    return lat_i.long(), lon_i.long()
+
+
+def land_mask_from_coords(pred_coords):
+    # pred_coords: [B, T, 2], lat first
+    lat = pred_coords[..., 0]
+    lon = pred_coords[..., 1]
+
+    lat_i, lon_i = latlon_to_index(lat, lon)
+    return _land_mask[lat_i, lon_i]  # returns [B, T] boolean mask
+
+
 class PenalizedCoordLoss(nn.Module):
     def __init__(self, base_loss: nn.Module, penalty_value=100):
-        """
-        Wraps a base loss (e.g., nn.MSELoss) and adds a fixed penalty
-        for predictions that fall on land.
-
-        base_loss: standard PyTorch loss function
-        penalty_value: value to assign to coords on land
-        """
         super().__init__()
         self.base_loss = base_loss
         self.penalty_value = penalty_value
 
-    def forward(self, pred_coords: torch.Tensor, target_coords: torch.Tensor):
-        """
-        pred_coords: [B, T, 2] tensor with predicted [lat, lon]
-        target_coords: [B, T, 2] tensor with target [lat, lon]
-        """
-        # Compute the base loss
-        base_loss_val = self.base_loss(pred_coords, target_coords)
+    def forward(self, pred_coords, target_coords):
+        base = self.base_loss(pred_coords, target_coords)
 
-        # Handle land penalty safely
-        B, T, _ = pred_coords.shape
-        pred_np = pred_coords.detach().cpu().numpy().reshape(-1, 2)
-        lat, lon = pred_np[:, 0], pred_np[:, 1]
+        land_mask = land_mask_from_coords(pred_coords)  # [B, T], bool, GPU
 
-        # Safe check for valid coordinates
-        land_mask = torch.zeros(B * T, dtype=torch.bool)
-        for i in range(B * T):
-            try:
-                if globe.is_land(lat[i], lon[i]):
-                    land_mask[i] = True
-            except Exception:
-                # If invalid coordinate, ignore penalty
-                pass
-
-        land_mask = land_mask.reshape(B, T).to(pred_coords.device)
-
-        # Compute a penalty tensor of same shape as coords
-        penalty_tensor = torch.zeros_like(pred_coords)
-        penalty_tensor[land_mask] = self.penalty_value
-
-        # Add mean penalty to the base loss
-        total_loss = base_loss_val + penalty_tensor.mean()
-
-        return total_loss
+        # Broadcast to [B, T, 2]
+        penalty = land_mask.unsqueeze(-1).float() * self.penalty_value
+        return base + penalty.mean()
 
 
 class WeightedStepMSELoss(nn.Module):
