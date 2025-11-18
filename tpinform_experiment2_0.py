@@ -48,14 +48,13 @@ class TPTrans(nn.Module):
         self,
         input_dim=6,
         d_model=256,
-        nhead=8,
+        nhead=32,
         num_encoder_layers=8,
-        num_decoder_layers=8,
+        num_decoder_layers=2,
         pred_len=6,
         conv_kernel=3,
         conv_padding=1,
     ):
-
         super().__init__()
         self.input_dim = input_dim
         self.d_model = d_model
@@ -74,8 +73,8 @@ class TPTrans(nn.Module):
         )
 
         # ===== Informer-style encoder =====
-        d_ff = 512
-        activation = "gelu"
+        d_ff = 4*d_model
+        activation = "silu" # swish
         factor = 5
         dropout = 0.1
         Attn = ProbAttention
@@ -102,7 +101,7 @@ class TPTrans(nn.Module):
         dec_layers = [
             DecoderLayer(
                 self_attention=AttentionLayer(
-                    Attn(True, factor, attention_dropout=dropout, output_attention=False),
+                    Attn(False, factor, attention_dropout=dropout, output_attention=False),
                     d_model,
                     nhead,
                     mix=True,
@@ -341,7 +340,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     savename = False
-    savename = f"tpinform_experiment_{args.k}_{args.epochs}_{args.ds_diff_in_seq}_{args.ds_window_total}_{args.ds_window_pred}_{args.ds_stride}_{args.training_batchsize}_{args.training_lr}"
+    savename = f"tpinform_experiment2_0_{args.k}_{args.epochs}_{args.ds_diff_in_seq}_{args.ds_window_total}_{args.ds_window_pred}_{args.ds_stride}_{args.training_batchsize}_{args.training_lr}"
 
     argnames = [
         "k",

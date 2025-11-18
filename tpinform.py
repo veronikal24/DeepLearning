@@ -66,8 +66,8 @@ class TPTrans(nn.Module):
         )
 
         # ======== NEW: Informer-style encoder stack ========
-        d_ff = 512
-        activation = "gelu"
+        d_ff = 4*d_model
+        activation = "silu" # swish
         factor = 5
         dropout = 0.1
         Attn = ProbAttention
