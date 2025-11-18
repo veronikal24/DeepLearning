@@ -28,8 +28,8 @@ source venv/bin/activate
 cd DeepLearning-1
 # executes the script
 python tptrans.py\
-    --k 1500 \
-    --epochs 400 \
+    --k 2500 \
+    --epochs 300 \
     --ds_diff_in_seq 20 \
     --ds_window_total 420 \
     --ds_window_pred 120 \

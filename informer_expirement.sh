@@ -30,7 +30,7 @@ cd DeepLearning-1
 # executes the script
 python tpinform_experiment.py\
     --k 1500 \
-    --epochs 600 \
+    --epochs 300 \
     --ds_diff_in_seq 20 \
     --ds_window_total 420 \
     --ds_window_pred 120 \
