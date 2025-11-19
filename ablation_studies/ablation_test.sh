@@ -1,11 +1,11 @@
 #!/bin/bash
-#BSUB -J Ablation
-#BSUB -o ablation_studies/logs/results_%J.log
-#BSUB -e ablation_studies/logs/errors_%J.err
-#BSUB -q gpuv100
+#BSUB -J AblationTPT
+#BSUB -o ablation_studies/logs/results_TPT_%J.log
+#BSUB -e ablation_studies/logs/errors_TPT_%J.err
+#BSUB -q gpua40
 #BSUB -gpu "num=1:mode=exclusive_process"
-#BSUB -R "rusage[mem=2G]"
-#BSUB -W 04:00
+#BSUB -R "rusage[mem=4G]"
+#BSUB -W 12:00
 #BSUB -R "span[hosts=1]"
 #BSUB -n 4
 
@@ -18,4 +18,4 @@ module load cuda
 cd /zhome/0a/d/219948/
 source venv/bin/activate
 cd repos/DeepLearning/ablation_studies
-python run.py
+python run.py --model TPTrans
