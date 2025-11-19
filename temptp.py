@@ -549,7 +549,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     savename = False
-    savename = f"temptpidec_{args.k}_{args.epochs}_{args.ds_diff_in_seq}_{args.ds_window_total}_{args.ds_window_pred}_{args.ds_stride}_{args.training_batchsize}_{args.training_lr}"
+    savename = f"temptpi_{args.k}_{args.epochs}_{args.ds_diff_in_seq}_{args.ds_window_total}_{args.ds_window_pred}_{args.ds_stride}_{args.training_batchsize}_{args.training_lr}"
 
     argnames = [
         "k",
@@ -568,7 +568,6 @@ if __name__ == "__main__":
     )
 
     model = train_model_from_dataset(
-        model=args.model,
         k=args.k,
         epochs=args.epochs,
         ds_diff_in_seq=args.ds_diff_in_seq,
