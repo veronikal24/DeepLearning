@@ -116,6 +116,7 @@ def main(model="TPTrans"):
                 "early_stopped": 0,
                 "train_loss": "ERROR",
                 "val_loss": "ERROR",
+                "test_loss": "ERROR",
                 "training_time_s": f"{training_time:.2f}",
                 "timestamp": datetime.now().isoformat(),
             }
