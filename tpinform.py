@@ -4,11 +4,8 @@ import torch.nn as nn
 import argparse
 from torch.utils.data import random_split, DataLoader
 from dataloader import load_parquet, preprocess_data, SlidingWindowDataset
-from utils import deltas_to_coords, PenalizedCoordLoss
-
-
-from informer_original_paper import ProbAttention, AttentionLayer, EncoderLayer
-
+from utils import deltas_to_coords
+from informer_original_paper import ProbAttention, EncoderLayer, AttentionLayer
 
 
 class PositionalEncoding(nn.Module):
@@ -29,16 +26,11 @@ class PositionalEncoding(nn.Module):
         self.d_model = d_model
 
     def forward(self, x):
-        """
-        Expects (seq_len, batch, d_model), same as PyTorch's Transformer.
-        If your Informer implementation uses (batch, seq_len, d_model),
-        you can permute before/after calling this.
-        """
         seq_len = x.size(0)
         return x + self.pe[:seq_len].unsqueeze(1).to(x.device).to(x.dtype)
 
 
-class TPTrans(nn.Module):
+class TPInform(nn.Module):
     def __init__(
         self,
         input_dim=6,
@@ -54,7 +46,6 @@ class TPTrans(nn.Module):
         self.d_model = d_model
         self.pred_len = pred_len
 
-        # project 6 inputs to d_model
         self.input_proj = nn.Linear(input_dim, d_model)
 
         # positional encoding as first block
@@ -65,23 +56,16 @@ class TPTrans(nn.Module):
             d_model, d_model, kernel_size=conv_kernel, padding=conv_padding
         )
 
-        # ======== NEW: Informer-style encoder stack ========
-        d_ff = 4*d_model
-        activation = "silu" # swish
-        factor = 5
-        dropout = 0.1
-        Attn = ProbAttention
-
-        # We keep the same (seq_len, batch, d_model) shape flowing into the encoder
-        # as in your original code.
+        # Informer encoder for global extraction
+        ffn_dim = 4 * d_model
         self.encoder_layers = nn.ModuleList(
             [
                 EncoderLayer(
                     AttentionLayer(
-                        Attn(
+                        ProbAttention(
                             False,
-                            factor,
-                            attention_dropout=dropout,
+                            factor=5,
+                            attention_dropout=0.1,
                             output_attention=False,
                         ),
                         d_model,
@@ -89,14 +73,13 @@ class TPTrans(nn.Module):
                         mix=False,
                     ),
                     d_model=d_model,
-                    d_ff=d_ff,
-                    dropout=dropout,
-                    activation=activation,
+                    d_ff=ffn_dim,
+                    dropout=0.1,
+                    activation="gelu",
                 )
                 for _ in range(num_encoder_layers)
             ]
         )
-        # ===================================================
 
         # decoder positional encoding
         self.pos_decoder = PositionalEncoding(d_model, max_len=2048)
@@ -113,33 +96,27 @@ class TPTrans(nn.Module):
         if pred_len is None:
             pred_len = self.pred_len
 
-        batch, src_len, d_in = src.shape
-        assert d_in == self.input_dim, f"Expected input_dim={self.input_dim}, got {d_in}"
+        batch, src_len, d_model = src.shape
 
         # project input to d_model
         x = self.input_proj(src)  # (batch, src_len, d_model)
 
-        # positional encoding expects (seq_len, batch, d_model)
+        # positional encoding
         x = x.permute(1, 0, 2)  # (src_len, batch, d_model)
         x = self.pos_encoder(x)
 
-        # convolution: conv1d expects (batch, channels, seq_len)
+        # convolution
         x_conv = x.permute(1, 2, 0)  # (batch, d_model, src_len)
         x_conv = self.conv(x_conv)
-
-        # back to (seq_len, batch, d_model) for the encoder
         memory = x_conv.permute(2, 0, 1)  # (src_len, batch, d_model)
 
-        # ======== NEW: pass through Informer-style encoder layers ========
-        # Typical Informer EncoderLayer returns (x, attn); we ignore the attention map.
+        # transformer encoder
+        # memory = self.encoder(memory)
+        # informer encoder (manually pass through all layers)
         for layer in self.encoder_layers:
-            # If your EncoderLayer has signature (x, attn_mask=None), this works.
-            # If it only takes (x), just remove attn_mask.
             memory, _ = layer(memory, attn_mask=None)
-        # ================================================================
-
-        # global context (mean pooling over time)
-        context = memory.mean(dim=0)  # (batch, d_model)
+        # global context (mean pooling)
+        context = memory.mean(dim=0)
 
         # init decoder positional encodings for future steps with zeros
         zeros_for_pos = torch.zeros(
@@ -166,7 +143,7 @@ class TPTrans(nn.Module):
         delta_lon = delta_lon.permute(1, 0)
 
         # combine lat and lon channels to one tensor
-        preds = torch.stack([delta_lat, delta_lon], dim=2)  # (batch, pred_len, 2)
+        preds = torch.stack([delta_lat, delta_lon], dim=2)
 
         return preds
 
@@ -282,7 +259,7 @@ def train_model_from_dataset(
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using {device}...", flush=True)
-    model = TPTrans(pred_len=dataset[0][1].shape[0]).to(device)
+    model = TPInform(pred_len=dataset[0][1].shape[0]).to(device)
 
     trained_model, train_loader, val_loader, test_loader = _train(
         model,
@@ -325,7 +302,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     savename = False
-    savename = f"tpinform_experiment_{args.k}_{args.epochs}_{args.ds_diff_in_seq}_{args.ds_window_total}_{args.ds_window_pred}_{args.ds_stride}_{args.training_batchsize}_{args.training_lr}"
+    savename = f"tpi_{args.k}_{args.epochs}_{args.ds_diff_in_seq}_{args.ds_window_total}_{args.ds_window_pred}_{args.ds_stride}_{args.training_batchsize}_{args.training_lr}"
 
     argnames = [
         "k",
@@ -338,7 +315,7 @@ if __name__ == "__main__":
         "Training: Learning rate",
     ]
     print(
-        "Starting training for TPTrans with the following parameters:\n\t"
+        "Starting training for TPInform with the following parameters:\n\t"
         + "\n\t".join(a + " - " + b for a, b in zip(argnames, savename.split("_")[1:]))
         + "\n"
     )
