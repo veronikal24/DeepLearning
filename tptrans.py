@@ -4,29 +4,8 @@ import torch.nn as nn
 import argparse
 from torch.utils.data import random_split, DataLoader
 from dataloader import load_parquet, preprocess_data, SlidingWindowDataset
-from utils import deltas_to_coords, PenalizedCoordLoss
-
-
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=5000):
-        super().__init__()
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, d_model, 2, dtype=torch.float32)
-            * (-torch.log(torch.tensor(10000.0)) / d_model)
-        )
-        pe[:, 0::2] = torch.sin(position * div_term)
-        if d_model % 2 == 1:
-            pe[:, 1::2] = torch.cos(position * div_term[:-1])
-        else:
-            pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer("pe", pe)
-        self.d_model = d_model
-
-    def forward(self, x):
-        seq_len = x.size(0)
-        return x + self.pe[:seq_len].unsqueeze(1).to(x.device).to(x.dtype)
+from utils import deltas_to_coords
+from encoders import PositionalEncoding
 
 
 class TPTrans(nn.Module):
@@ -156,7 +135,7 @@ def _train(
     # criterion = nn.HuberLoss()
     # criterion = PenalizedCoordLoss(nn.MSELoss())
 
-    best_val_loss = float('inf')
+    best_val_loss = float("inf")
     no_improve = 0
     epochs_trained = 0
 
@@ -208,17 +187,23 @@ def _train(
                 best_state = model.state_dict().copy()
             else:
                 no_improve += 1
-            
+
             if no_improve >= early_stopping_patience:
                 print(f"Early stopping at epoch {epoch + 1}", flush=True)
                 model.load_state_dict(best_state)
                 break
 
-    return model, train_loader, val_loader, test_loader, {
-        "epochs_trained": epochs_trained,
-        "train_loss": avg_loss,
-        "val_loss": val_loss,
-    }
+    return (
+        model,
+        train_loader,
+        val_loader,
+        test_loader,
+        {
+            "epochs_trained": epochs_trained,
+            "train_loss": avg_loss,
+            "val_loss": val_loss,
+        },
+    )
 
 
 def _evaluate(model, test_loader, device):
