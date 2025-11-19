@@ -27,4 +27,4 @@ source venv/bin/activate
 # changes directory into the deep learning project folder
 cd DeepLearning
 # executes the script
-python temptp.py --k 1000 --epochs 300 --ds_window_total 420 --ds_window_pred 120
+python temptpi.py --k 1000 --epochs 300 --ds_window_total 420 --ds_window_pred 120
