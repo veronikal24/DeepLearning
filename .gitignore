@@ -19,5 +19,5 @@ command_scripts/job.sh
 # Dataset
 dataset/
 
-# Ablation testing 
-ablation_studies/
+ablation_studies/logs/*.log
+ablation_studies/logs/*.err
