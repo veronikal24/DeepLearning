@@ -1,11 +1,11 @@
 import os
 import torch
 import torch.nn as nn
+import argparse
 from torch.utils.data import random_split, DataLoader
 from dataloader import load_parquet, preprocess_data, SlidingWindowDataset
-from informer_original_paper import EncoderLayer, DecoderLayer, Encoder, Decoder, AttentionLayer, ProbAttention, FullAttention, ConvLayer
-import argparse
-from utils import deltas_to_coords, PenalizedCoordLoss
+from utils import deltas_to_coords
+from informer_original_paper import ProbAttention, EncoderLayer, AttentionLayer
 
 
 class PositionalEncoding(nn.Module):
@@ -25,165 +25,127 @@ class PositionalEncoding(nn.Module):
         self.register_buffer("pe", pe)
         self.d_model = d_model
 
-    def forward(self, x, tgt_start = 0):
+    def forward(self, x):
         seq_len = x.size(0)
         return x + self.pe[:seq_len].unsqueeze(1).to(x.device).to(x.dtype)
 
 
-# --- TPtrans-like Model ---
-class TPTrans(nn.Module):
+class TPInform(nn.Module):
     def __init__(
         self,
         input_dim=6,
-        d_model=512,
+        d_model=256,
         nhead=8,
-        num_encoder_layers=4,
-        num_decoder_layers=4,
-        pred_len=5,
-        label_len=5, 
-             conv_kernel=3,
-        conv_padding=1,    
+        num_encoder_layers=8,
+        pred_len=6,
+        conv_kernel=3,
+        conv_padding=1,
     ):
         super().__init__()
+        self.input_dim = input_dim
         self.d_model = d_model
-        
-        
+        self.pred_len = pred_len
+
         self.input_proj = nn.Linear(input_dim, d_model)
 
         # positional encoding as first block
-        self.pos_encoder = PositionalEncoding(d_model)
+        self.pos_encoder = PositionalEncoding(d_model, max_len=2048)
 
         # convolution for short-term feature extraction
         self.conv = nn.Conv1d(
             d_model, d_model, kernel_size=conv_kernel, padding=conv_padding
         )
 
-        self.label_len = label_len
-        #imported from informer_original_paper.py
-        d_ff = 512
-        activation = "gelu"
-        factor = 5
-        Attn = ProbAttention
-        dropout = 0.1
-        enc_layers = [
-            EncoderLayer(
-                AttentionLayer(
-                    Attn(False, factor, attention_dropout=dropout, output_attention=False),
-                    d_model,
-                    nhead,
-                    mix=False,
-                ),
-                d_model=d_model,
-                d_ff=d_ff,
-                dropout=dropout,
-                activation=activation,
-            )
-            for _ in range(num_encoder_layers)
-        ]
-
-        # optional distilling convs between encoder layers (Informer trick)
-        conv_layers = [
-            ConvLayer(d_model) for _ in range(num_encoder_layers - 1)
-        ]
-
-        self.encoder = Encoder(
-            attn_layers=enc_layers,
-            conv_layers=conv_layers,
-            norm_layer=nn.LayerNorm(d_model),
+        # Informer encoder for global extraction
+        ffn_dim = 4 * d_model
+        self.encoder_layers = nn.ModuleList(
+            [
+                EncoderLayer(
+                    AttentionLayer(
+                        ProbAttention(
+                            False,
+                            5,
+                            attention_dropout=0.1,
+                            output_attention=False,
+                        ),
+                        d_model,
+                        nhead,
+                        mix=False,
+                    ),
+                    d_model=d_model,
+                    d_ff=ffn_dim,
+                    dropout=0.1,
+                    activation="gelu",
+                )
+                for _ in range(num_encoder_layers)
+            ]
         )
 
-        #---------------------------------------------
-        self.decoder_input_proj = nn.Linear(2, d_model)
-        #imported from informer_original_paper.py
-        dec_layers = [
-                    DecoderLayer(
-                        self_attention=AttentionLayer(
-                            Attn(True, factor, attention_dropout=dropout, output_attention=False),
-                            d_model,
-                            nhead,
-                            mix=True,
-                        ),
-                        cross_attention=AttentionLayer(
-                            FullAttention(False, factor, attention_dropout=dropout, output_attention=False),
-                            d_model,
-                            nhead,
-                            mix=False,
-                        ),
-                        d_model=d_model,
-                        d_ff=d_ff,
-                        dropout=dropout,
-                        activation=activation,
-                    )
-                    for _ in range(num_decoder_layers)
-                ]
+        # decoder positional encoding
         self.pos_decoder = PositionalEncoding(d_model, max_len=2048)
-        self.decoder = Decoder(
-                    layers=dec_layers,
-                    norm_layer=nn.LayerNorm(d_model),
-                )
-        
-        #---------------------------------------------
 
-        self.output_head = nn.Linear(d_model, 2)  # lat, lon
-        self.pred_len = pred_len
+        # two-channel sequential linear layer decoding for prediction
+        self.decoder_delta_lat = nn.Sequential(
+            nn.Linear(d_model, d_model), nn.ReLU(inplace=True), nn.Linear(d_model, 1)
+        )
+        self.decoder_delta_lon = nn.Sequential(
+            nn.Linear(d_model, d_model), nn.ReLU(inplace=True), nn.Linear(d_model, 1)
+        )
 
-    def forward(self, src, tgt_start):
-        """
-        src:       (B, src_len, input_dim)
-        tgt_start: (B, 1, 2)   last known (lat, lon)
-        """
-        B, src_len, _ = src.shape
-        pred_len = self.pred_len
-        label_len = self.label_len
+    def forward(self, src, pred_len=None):
+        if pred_len is None:
+            pred_len = self.pred_len
 
-        # ---------- ENCODER ----------
-        # 1) Project input to d_model
-        x = self.input_proj(src)             # (B, L, d_model)
+        batch, src_len, d_model = src.shape
 
-        # 2) Positional encoding (seq-first)
-        x_seq = x.transpose(0, 1)            # (L, B, d_model)
-        x_seq = self.pos_encoder(x_seq)      # (L, B, d_model)
-        x = x_seq.transpose(0, 1)            # (B, L, d_model)
+        # project input to d_model
+        x = self.input_proj(src)  # (batch, src_len, d_model)
 
-        # 3) Local convolution (Informer-style)
-        x_conv = self.conv(x.transpose(1, 2))     # (B, d_model, L)
-        x = x_conv.transpose(1, 2)                # (B, L, d_model)
+        # positional encoding
+        x = x.permute(1, 0, 2)  # (src_len, batch, d_model)
+        x = self.pos_encoder(x)
 
-        # 4) Informer encoder (batch-first)
-        memory, _ = self.encoder(x, attn_mask=None)   # (B, L, d_model)
+        # convolution
+        x_conv = x.permute(1, 2, 0)  # (batch, d_model, src_len)
+        x_conv = self.conv(x_conv)
+        memory = x_conv.permute(2, 0, 1)  # (src_len, batch, d_model)
 
-        # ---------- BUILD DECODER INPUT ----------
-        dec_len = label_len + pred_len    # same as Informer
+        # transformer encoder
+        # memory = self.encoder(memory)
+        # informer encoder (manually pass through all layers)
+        for layer in self.encoder_layers:
+            memory, _ = layer(memory, attn_mask=None)
+        # global context (mean pooling)
+        context = memory.mean(dim=0)
 
-        # y in “lat/lon space”: (B, dec_len, 2)
-        last_pos = tgt_start.squeeze(1)   # (B, 2)
-        y = torch.zeros(B, dec_len, 2, device=src.device)
+        # init decoder positional encodings for future steps with zeros
+        zeros_for_pos = torch.zeros(
+            pred_len, batch, self.d_model, device=src.device, dtype=memory.dtype
+        )
+        tgt_pos = self.pos_decoder(zeros_for_pos)
 
-        # first part = context repeat
-        y[:, :label_len, :] = last_pos.unsqueeze(1)
+        # combine context + positional encoding
+        context_expanded = context.unsqueeze(0).expand(pred_len, -1, -1)
+        dec_in = context_expanded + tgt_pos
 
-        # project to d_model
-        tgt = self.decoder_input_proj(y)      # (B, dec_len, d_model)
+        # flatten for FC layers
+        dec_flat = dec_in.reshape(pred_len * batch, self.d_model)
 
-        # add positional encoding (seq-first again)
-        tgt_seq = tgt.transpose(0, 1)      # (dec_len, B, d_model)
-        tgt_seq = self.pos_decoder(tgt_seq)   # (dec_len, B, d_model)
-        tgt = tgt_seq.transpose(0, 1)         # (B, dec_len, d_model)
+        # predict deltas
+        delta_lat_flat = self.decoder_delta_lat(dec_flat)
+        delta_lon_flat = self.decoder_delta_lon(dec_flat)
 
-        # ---------- DECODER ----------
-        dec_out = self.pos_decoder(tgt, memory)   # (B, dec_len, d_model)
+        delta_lat = delta_lat_flat.view(pred_len, batch)
+        delta_lon = delta_lon_flat.view(pred_len, batch)
 
-        # output head → (lat, lon)
-        dec_out = self.output_head(dec_out)       # (B, dec_len, 2)
+        # from (pred_len, batch) to (batch, pred_len)
+        delta_lat = delta_lat.permute(1, 0)
+        delta_lon = delta_lon.permute(1, 0)
 
-        # keep only future part
-        pred = dec_out[:, -pred_len:, :]          # (B, pred_len, 2)
+        # combine lat and lon channels to one tensor
+        preds = torch.stack([delta_lat, delta_lon], dim=2)
 
-        return pred
-
-
-
-
+        return preds
 
 
 def _train(
@@ -211,8 +173,9 @@ def _train(
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = PenalizedCoordLoss(nn.MSELoss())
-
+    criterion = nn.MSELoss()
+    # criterion = WeightedStepMSELoss(mode="lin")
+    # criterion = nn.HuberLoss()
     # criterion = PenalizedCoordLoss(nn.MSELoss())
 
     for epoch in range(epochs):
@@ -222,8 +185,7 @@ def _train(
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
-            tgt_start = x[:, -1:, :2]  # grab lat/lon
-            pred = model(x, tgt_start)
+            pred = model(x)
             loss = criterion(deltas_to_coords(x, pred), deltas_to_coords(x, y))
             loss.backward()
             optimizer.step()
@@ -236,8 +198,7 @@ def _train(
         with torch.no_grad():
             for x, y in val_loader:
                 x, y = x.to(device), y.to(device)
-                tgt_start = x[:, -1:, :2]  # grab lat/lon
-                pred = model(x, tgt_start)
+                pred = model(x)
                 loss = criterion(deltas_to_coords(x, pred), deltas_to_coords(x, y))
                 val_loss += loss.item() * x.size(0)
 
@@ -265,8 +226,7 @@ def _evaluate(model, test_loader, device):
     with torch.no_grad():
         for x, y in test_loader:
             x, y = x.to(device), y.to(device)
-            tgt_start = x[:, -1:, :2]  # grab lat/lon
-            pred = model(x, tgt_start)
+            pred = model(x)
             loss = criterion(deltas_to_coords(x, pred), deltas_to_coords(x, y))
             test_loss += loss.item() * x.size(0)
     test_loss /= len(test_loader.dataset)
@@ -278,14 +238,14 @@ def train_model_from_dataset(
     k=100,
     epochs=100,
     ds_diff_in_seq=15,
-    ds_window_total=120,
-    ds_window_pred=30,
+    ds_window_total=420,
+    ds_window_pred=120,
     ds_stride=15,
     training_batchsize=32,
     training_lr=1e-4,
     save_model=False,
 ):
-    df = load_parquet("aisdk-2025-02-27", k=k)
+    df = load_parquet("dataset", k=k)
     df = preprocess_data(df)
 
     dataset = SlidingWindowDataset(
@@ -299,7 +259,7 @@ def train_model_from_dataset(
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using {device}...", flush=True)
-    model = TPTrans(pred_len=dataset[0][1].shape[0]).to(device)
+    model = TPInform(pred_len=dataset[0][1].shape[0]).to(device)
 
     trained_model, train_loader, val_loader, test_loader = _train(
         model,
@@ -342,7 +302,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     savename = False
-    savename = f"t_{args.k}_{args.epochs}_{args.ds_diff_in_seq}_{args.ds_window_total}_{args.ds_window_pred}_{args.ds_stride}_{args.training_batchsize}_{args.training_lr}"
+    savename = f"tpi_{args.k}_{args.epochs}_{args.ds_diff_in_seq}_{args.ds_window_total}_{args.ds_window_pred}_{args.ds_stride}_{args.training_batchsize}_{args.training_lr}"
 
     argnames = [
         "k",
@@ -355,7 +315,7 @@ if __name__ == "__main__":
         "Training: Learning rate",
     ]
     print(
-        "Starting training for TPTrans with the following parameters:\n\t"
+        "Starting training for TPInform with the following parameters:\n\t"
         + "\n\t".join(a + " - " + b for a, b in zip(argnames, savename.split("_")[1:]))
         + "\n"
     )
@@ -371,6 +331,3 @@ if __name__ == "__main__":
         training_lr=args.training_lr,
         save_model=savename,
     )
-
-
-
