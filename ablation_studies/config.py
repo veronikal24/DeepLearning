@@ -15,19 +15,31 @@ Training configuration:
 """
 
 # Parameter ranges (use loops to generate all combinations)
-window_size_minutes = [360, 480]           # 6h, 8h
+# window_size_minutes = [240, 360, 480]  # 4h, 6h, 8h
+# pred_size_minutes = [60, 120, 180, 240, 300]  # 1h, 2h, 3h, 4h, 5h
+# stride = [15, 30]  # 15min, 30min
+# k = [100, 500, 1000]  # MMSIs
+
+# Comment Kevin: I think we shouldn't create ALL combinations, instead do different blocks
+# f.ex. block 1:
+window_size_minutes = [240, 360, 480]  # 4h, 6h, 8h
 pred_size_minutes = [60, 120, 180, 240, 300]  # 1h, 2h, 3h, 4h, 5h
-stride = [15, 30]              # 15min, 30min
-k = [100, 500, 1000]         # MMSIs
+stride = [30]
+k = [1000]  # MMSIs
+# and block 2:
+# window_size_minutes = [480]  # 8h
+# pred_size_minutes = [300]  # 5h
+# stride = [15, 30]  # 15min, 30min
+# k = [100, 500, 1000]  # MMSIs
 
 # Training config
-epochs = 500
+epochs = 300
 early_stopping_patience = 20
 
 # Output metrics
 output_columns = [
     "window_size_minutes",
-    "pred_size_minutes", 
+    "pred_size_minutes",
     "stride",
     "k",
     "epochs_trained",

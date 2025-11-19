@@ -16,6 +16,7 @@ def _train(
     val_split=0.2,
     test_split=0.1,
     save_model=False,
+    early_stopping_patience=None,
 ):
     total_size = len(dataset)
     val_size = int(total_size * val_split)
@@ -36,6 +37,9 @@ def _train(
     # criterion = nn.HuberLoss()
     # criterion = PenalizedCoordLoss(nn.MSELoss())
 
+    best_val_loss = float("inf")
+    no_improve = 0
+    epochs_trained = 0
     for epoch in range(epochs):
         model.train()
         running_loss = 0.0
@@ -73,8 +77,32 @@ def _train(
             f"Epoch {epoch + 1}/{epochs} | Train Loss: {avg_loss:.6f} | Val Loss: {val_loss:.6f}",
             flush=True,
         )
+        epochs_trained = epoch + 1
+        # Early stopping (if enabled) (always do at least 100 epochs)
+        if early_stopping_patience is not None and epochs_trained > 100:
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                no_improve = 0
+                best_state = model.state_dict().copy()
+            else:
+                no_improve += 1
 
-    return model, train_loader, val_loader, test_loader
+            if no_improve >= early_stopping_patience:
+                print(f"Early stopping at epoch {epoch + 1}", flush=True)
+                model.load_state_dict(best_state)
+                break
+
+    return (
+        model,
+        train_loader,
+        val_loader,
+        test_loader,
+        {
+            "epochs_trained": epochs_trained,
+            "train_loss": avg_loss,
+            "val_loss": val_loss,
+        },
+    )
 
 
 def _evaluate(model, test_loader, device):
@@ -104,8 +132,10 @@ def train_model_from_dataset(
     training_batchsize=32,
     training_lr=1e-4,
     save_model=False,
+    dataset_path="dataset",
+    early_stopping_patience=None,
 ):
-    df = load_parquet("dataset", k=k)
+    df = load_parquet(dataset_path, k=k)
     df = preprocess_data(df)
 
     dataset = Dataset(
@@ -121,7 +151,7 @@ def train_model_from_dataset(
     print(f"Using {device}...", flush=True)
     model = Model(pred_len=dataset[0][1].shape[0]).to(device)
 
-    trained_model, train_loader, val_loader, test_loader = _train(
+    trained_model, train_loader, val_loader, test_loader, history = _train(
         model,
         dataset,
         device,
@@ -129,9 +159,10 @@ def train_model_from_dataset(
         lr=training_lr,
         epochs=epochs,
         save_model=save_model,
+        early_stopping_patience=early_stopping_patience,
     )
 
-    _evaluate(trained_model, test_loader, device)
+    test_loss = _evaluate(trained_model, test_loader, device)
 
     if save_model:
         os.makedirs("checkpoints", exist_ok=True)
@@ -146,4 +177,4 @@ def train_model_from_dataset(
         # model = torch.load(filepath)
         # model.eval()
 
-    return trained_model
+    return trained_model, test_loss, history

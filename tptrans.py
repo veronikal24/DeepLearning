@@ -133,7 +133,7 @@ if __name__ == "__main__":
         + "\n"
     )
 
-    model = train_model_from_dataset(
+    model, loss, hist = train_model_from_dataset(
         Model=TPTrans,
         Dataset=SlidingWindowDataset,
         k=args.k,
