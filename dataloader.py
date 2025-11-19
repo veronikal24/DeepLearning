@@ -335,7 +335,135 @@ class SlidingWindowDataset(Dataset):
                     )
 
                     input_df = block_df.loc[
-                        input_mask, ["delta_lat", "delta_lon", "Latitude", "Longitude", "SOG", "COG"]
+                        input_mask,
+                        [
+                            "delta_lat",
+                            "delta_lon",
+                            "Latitude",
+                            "Longitude",
+                            "SOG",
+                            "COG",
+                        ],
+                    ]
+                    pred_df = block_df.loc[pred_mask, ["delta_lat", "delta_lon"]]
+
+                    if len(input_df) == 0 or len(pred_df) == 0:
+                        start_time += self.stride
+                        continue
+                    if (
+                        len(input_df)
+                        == (window_size_minutes - pred_size_minutes)
+                        / SAMPLE_INTERVAL_MIN
+                        and len(pred_df) == pred_size_minutes / SAMPLE_INTERVAL_MIN
+                    ):
+                        x = torch.tensor(input_df.values, dtype=torch.float32)
+                        y = torch.tensor(pred_df.values, dtype=torch.float32)
+                        self.windows.append((x, y))
+
+                    start_time += self.stride
+
+    def __len__(self):
+        return len(self.windows)
+
+    def __getitem__(self, idx):
+        return self.windows[idx]
+
+
+class SlidingWindowDatasetTemporal(Dataset):
+    """Inherits from pytorch dataset;
+    Determines blocks of sequences based on the 'max_diff_per_sequence_minutes',
+    then extracts windows out of these blocks, based on the given 'window_size_minutes' and 'pred_size_minutes' parameters.
+    The 'stride' value determines how much each new extraction within this window is moving to the side.
+    """
+
+    def __init__(
+        self,
+        df,
+        max_diff_per_sequence_minutes=6,
+        window_size_minutes=60,
+        pred_size_minutes=30,
+        stride=6,
+    ):
+        self.df = df.copy()
+        self.windows = []
+        self.blocks = defaultdict(list)
+        self.window_size_minutes = window_size_minutes
+        self.pred_size_minutes = pred_size_minutes
+        self.stride = stride
+
+        for mmsi, group in df.groupby("MMSI"):
+            group = group.sort_values("Timestamp")
+            group["time_diff"] = group["Timestamp"].diff()
+            group["block"] = (
+                group["time_diff"] > pd.Timedelta(minutes=max_diff_per_sequence_minutes)
+            ).cumsum()
+
+            for _, block_df in group.groupby("block"):
+                if len(block_df) < 2:
+                    continue
+
+                self.blocks[mmsi].append(
+                    (block_df["Timestamp"].min(), block_df["Timestamp"].max())
+                )
+
+                # Compute relative time in minutes
+                block_df = block_df.copy()
+                block_df["time_min"] = (
+                    block_df["Timestamp"] - block_df["Timestamp"].iloc[0]
+                ).dt.total_seconds() / 60.0
+
+                if block_df["time_min"].iloc[-1] < window_size_minutes:
+                    continue
+
+                block_df["delta_lat"] = block_df["Latitude"].diff().fillna(0)
+                block_df["delta_lon"] = block_df["Longitude"].diff().fillna(0)
+
+                start_time = 0.0
+                while True:
+                    end_time = start_time + window_size_minutes
+                    if end_time > block_df["time_min"].iloc[-1]:
+                        break
+
+                    # Use aligned masks
+                    window_mask = (block_df["time_min"] >= start_time) & (
+                        block_df["time_min"] < end_time
+                    )
+                    if not window_mask.any():
+                        start_time += self.stride
+                        continue
+
+                    ts = block_df["Timestamp"]
+                    block_df["sin_hour"] = np.sin(2 * np.pi * ts.dt.hour / 24)
+                    block_df["cos_hour"] = np.cos(2 * np.pi * ts.dt.hour / 24)
+                    block_df["sin_dayofweek"] = np.sin(2 * np.pi * ts.dt.dayofweek / 7)
+                    block_df["cos_dayofweek"] = np.cos(2 * np.pi * ts.dt.dayofweek / 7)
+                    block_df["sin_month"] = np.sin(2 * np.pi * (ts.dt.month - 1) / 12)
+                    block_df["cos_month"] = np.cos(2 * np.pi * (ts.dt.month - 1) / 12)
+
+                    split_time = start_time + (window_size_minutes - pred_size_minutes)
+                    input_mask = (block_df["time_min"] >= start_time) & (
+                        block_df["time_min"] < split_time
+                    )
+                    pred_mask = (block_df["time_min"] >= split_time) & (
+                        block_df["time_min"] < end_time
+                    )
+
+                    input_df = block_df.loc[
+                        input_mask,
+                        [
+                            "delta_lat",
+                            "delta_lon",
+                            "Latitude",
+                            "Longitude",
+                            "SOG",
+                            "COG",
+                            "sin_hour",
+                            "cos_hour",
+                            "sin_dayofweek",
+                            "cos_dayofweek",
+                            "sin_month",
+                            "cos_month",
+                        ],
                     ]
                     pred_df = block_df.loc[pred_mask, ["delta_lat", "delta_lon"]]
 
