@@ -50,7 +50,7 @@ def main(model="TPTrans"):
     else:
         D = SlidingWindowDatasetTemporal
 
-    results_file = "results.csv"
+    results_file = f"results_{model}_b1.csv"
 
     # Initialize CSV
     if not os.path.exists(results_file):
