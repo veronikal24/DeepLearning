@@ -5,7 +5,7 @@
 #BSUB -q gpua40
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -R "rusage[mem=4G]"
-#BSUB -W 12:00
+#BSUB -W 18:00
 #BSUB -R "span[hosts=1]"
 #BSUB -n 4
 
@@ -15,7 +15,6 @@
 # bsub < ./ablation_test.sh
 
 module load cuda
-cd /zhome/0a/d/219948/
-source venv/bin/activate
-cd repos/DeepLearning/ablation_studies
-python run.py --model TPTrans
+cd /zhome/63/7/219953/
+cd repos/DeepLearning-1/ablation_studies
+python run.py --model TPInform
