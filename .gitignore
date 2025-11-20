@@ -12,6 +12,8 @@ command_scripts/job.sh
 *.parquet
 *.csv
 *.pth
+# Exception for ablation study results
+!ablation_studies/*.csv
 
 # Stupid macOS stuff
 *.DS_Store
