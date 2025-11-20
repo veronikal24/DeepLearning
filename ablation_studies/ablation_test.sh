@@ -16,5 +16,5 @@
 
 module load cuda
 cd /zhome/63/7/219953/
-cd repos/DeepLearning-1/ablation_studies
+cd DeepLearning-1/ablation_studies
 python run.py --model TPInform
