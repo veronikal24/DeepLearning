@@ -1,0 +1,16 @@
+model,prefix,test_loss
+TPTrans,Test Loss:,0.000470
+TPTrans,Test Loss:,0.000925
+TPTrans,Test Loss:,0.001583
+TPTrans,Test Loss:,0.001950
+TPTrans,Test Loss:,0.003032
+TPInform,Test Loss:,0.000401
+TPInform,Test Loss:,0.000810
+TPInform,Test Loss:,0.000894
+TPInform,Test Loss:,0.001005
+TPInform,Test Loss:,0.001656
+TempTPI,Test Loss:,0.000377
+TempTPI,Test Loss:,0.000573
+TempTPI,Test Loss:,0.000671
+TempTPI,Test Loss:,0.0009917
+TempTPI,Test Loss:,0.001356
