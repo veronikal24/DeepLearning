@@ -26,6 +26,7 @@ window_size_minutes = [240, 360, 480]  # 4h, 6h, 8h
 pred_size_minutes = [60, 120, 180, 240, 300]  # 1h, 2h, 3h, 4h, 5h
 stride = [30]
 k = [1000]  # MMSIs
+
 # and block 2 (observe prediction quality based on larger/smaller datasets):
 # window_size_minutes = [480]  # 8h
 # pred_size_minutes = [300]  # 5h
@@ -33,8 +34,8 @@ k = [1000]  # MMSIs
 # k = [100, 500, 1000]  # MMSIs
 
 # Training config
-epochs = 300
-early_stopping_patience = 20
+epochs = 200
+early_stopping_patience = None
 
 # Output metrics
 output_columns = [
