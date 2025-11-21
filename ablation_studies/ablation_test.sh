@@ -1,11 +1,11 @@
 #!/bin/bash
-#BSUB -J AblationTPT
+#BSUB -J TempTPI_Ablation
 #BSUB -o ablation_studies/logs/results_TPT_%J.log
 #BSUB -e ablation_studies/logs/errors_TPT_%J.err
-#BSUB -q gpua40
+#BSUB -q gpuv100
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -R "rusage[mem=4G]"
-#BSUB -W 18:00
+#BSUB -W 20:00
 #BSUB -R "span[hosts=1]"
 #BSUB -n 4
 
