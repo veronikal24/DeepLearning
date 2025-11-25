@@ -98,11 +98,11 @@ def plot_dataset_sample(dataset):
 def plot_testresult_sample(dataset):
     # Create 4 subplots
     fig, axs = plt.subplots(
-        4, 2, figsize=(14, 10), subplot_kw={"projection": ccrs.PlateCarree()}
+        4, 3, figsize=(14, 10), subplot_kw={"projection": ccrs.PlateCarree()}
     )
     axs = axs.flatten()
 
-    sample = random.sample(range(len(dataset)), 8)
+    sample = random.sample(range(len(dataset)), 12)
 
     for i, ax in enumerate(axs):
         ax.add_feature(cfeature.LAND)
@@ -124,12 +124,12 @@ def plot_testresult_sample(dataset):
                 xn[1][-1] + np.cumsum(p.squeeze(0).numpy()[:, 1]),
             )
             min_lon, max_lon = (
-                min(min(xn[1]), min(yn[1])) - 1,
-                max(max(xn[1]), max(yn[1])) + 1,
+                min(min(xn[1]), min(yn[1])) - 0.1,
+                max(max(xn[1]), max(yn[1])) + 0.1,
             )
             min_lat, max_lat = (
-                min(min(xn[0]), min(yn[0])) - 1,
-                max(max(xn[0]), max(yn[0])) + 1,
+                min(min(xn[0]), min(yn[0])) - 0.1,
+                max(max(xn[0]), max(yn[0])) + 0.1,
             )
             ax.set_extent([min_lon, max_lon, min_lat, max_lat])
             # ax.scatter(xn[1], xn[0], color="b", s=10)
