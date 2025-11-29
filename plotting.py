@@ -144,3 +144,59 @@ def plot_testresult_sample(dataset):
 
     plt.tight_layout()
     plt.show()
+
+
+def plot_testresult_sample_both(dataset):
+    # Create 4 subplots
+    fig, axs = plt.subplots(
+        4, 2, figsize=(14, 10), subplot_kw={"projection": ccrs.PlateCarree()}
+    )
+    axs = axs.flatten()
+
+    sample = random.sample(range(len(dataset)), 8)
+
+    for i, ax in enumerate(axs):
+        ax.add_feature(cfeature.LAND)
+        ax.add_feature(cfeature.OCEAN)
+        ax.add_feature(cfeature.COASTLINE)
+        ax.add_feature(cfeature.BORDERS, linestyle=":")
+        ax.add_feature(cfeature.LAKES, alpha=0.5)
+        ax.add_feature(cfeature.RIVERS)
+
+        for x, y, p, p2 in dataset[sample[i] : sample[i] + 1]:
+            xn = (x.squeeze(0).numpy()[:, 2], x.squeeze(0).numpy()[:, 3])
+            yn = (y.squeeze(0).numpy()[:, 0], y.squeeze(0).numpy()[:, 1])
+            yn = (
+                xn[0][-1] + np.cumsum(y.squeeze(0).numpy()[:, 0]),
+                xn[1][-1] + np.cumsum(y.squeeze(0).numpy()[:, 1]),
+            )
+            pn = (
+                xn[0][-1] + np.cumsum(p.squeeze(0).numpy()[:, 0]),
+                xn[1][-1] + np.cumsum(p.squeeze(0).numpy()[:, 1]),
+            )
+            pn2 = (
+                xn[0][-1] + np.cumsum(p2.squeeze(0).numpy()[:, 0]),
+                xn[1][-1] + np.cumsum(p2.squeeze(0).numpy()[:, 1]),
+            )
+            min_lon, max_lon = (
+                min(min(xn[1]), min(yn[1])) - 0.1,
+                max(max(xn[1]), max(yn[1])) + 0.1,
+            )
+            min_lat, max_lat = (
+                min(min(xn[0]), min(yn[0])) - 0.1,
+                max(max(xn[0]), max(yn[0])) + 0.1,
+            )
+            ax.set_extent([min_lon, max_lon, min_lat, max_lat])
+            # ax.scatter(xn[1], xn[0], color="b", s=10)
+            # ax.scatter(yn[1], yn[0], color="g", s=10)
+            ax.plot(xn[1], xn[0], color="b", linewidth=4)
+            ax.plot(pn[1], pn2[0], color="g", linewidth=4, alpha=0.7)
+            ax.plot(pn[1], pn[0], color="r", linewidth=4, alpha=0.7)
+            ax.plot(yn[1], yn[0], color="b", linewidth=4, alpha=0.4)
+
+        ax.set_xlabel("Longitude")
+        ax.set_ylabel("Latitude")
+        ax.set_title(f"Connected Scatter of Vessels (Sample {i + 1})")
+
+    plt.tight_layout()
+    plt.show()
