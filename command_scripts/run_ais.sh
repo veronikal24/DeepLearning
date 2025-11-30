@@ -1,4 +1,4 @@
-for i in {11..14}; do
+for i in {01..14}; do
   wget http://aisdata.ais.dk/aisdk-2025-10-$(printf "%02d" "$i").zip
   unzip aisdk-2025-10-$(printf "%02d" "$i").zip
   rm aisdk-2025-10-$(printf "%02d" "$i").zip
