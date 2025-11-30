@@ -19,7 +19,7 @@ SAMPLE_INTERVAL_MIN = 6
 
 
 def csv_to_parquet(file_path, out_path):
-    """Reads the csv files from the danish thingy and creates parquet files in the given directory (this is the script Heisenberg provided)
+    """Reads the csv files from the AIS thingy and creates parquet files in the given directory
 
     Args:
         file_path (str): path to the input csv
