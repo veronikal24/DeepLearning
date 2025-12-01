@@ -18,7 +18,8 @@ Group 48 project for 02456 Deep Learning course, for experimenting with AIS vess
 - `logs/` and `important_performance_log_files/` — training and evaluation logs.
 - `dataset/` — directory for the MMSI parquet files.
 - `*.ipynb` — exploration and evaluation notebooks.
-- `ablation_studies/` - the script and results to run the ablation studies
+- `ablation_studies/` - the script to run the ablation studies and the results
+- `figs_for_report/` - all the figures used in the report
 
 ## Running on a cluster / batch system 
 - The repo contains `*_job.sh` as submission scripts for the LSF cluster scheduler. Edit resource requests and paths then submit with your scheduler's submit command (e.g. `bsub < job.sh`).
