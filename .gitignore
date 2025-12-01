@@ -25,3 +25,4 @@ ablation_studies/logs/*.log
 ablation_studies/logs/*.err
 
 literature/
+literature/*.pdf
