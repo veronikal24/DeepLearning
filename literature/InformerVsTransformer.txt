@@ -1,2 +1,0 @@
-Good Link: 
-https://www.geeksforgeeks.org/deep-learning/transformer-for-time-series-forecasting/

@@ -24,5 +24,5 @@ dataset/
 ablation_studies/logs/*.log
 ablation_studies/logs/*.err
 
-literature/
+literature_files/
 literature/*.pdf
